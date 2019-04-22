@@ -1,0 +1,63 @@
+Yufan Cheng pennkey: yufanc, id: 22278531
+Jacob Cui pennkey: jacobcui, id: 13670923
+
+1. What types of messages does your jukebox protocol send, and what do they mean?
+list\r\n - list all songs along with ID numbers in a visually recognizable format.
+play [song number]\r\n - start to play the song with the ID number. Print an error message if the song number is not found.
+stop\r\n - stop playing the current song. No action if there is no song playing.
+
+
+2. How are your messages formatted?  Are they text or binary, and what does the header look like?  How do you determine where one message ends and another begins?
+single message from server:
+    [STATUS]\r\n
+    [SESSION ID]\r\n 
+    [PAYLOAD]\r\n
+    \r\n 
+
+STATUS = 200 or 403. 200 means OK, and 403 means not valid, especially when the command is play n and n is not valid. We simpilify the model by assuming the internet connection is always good. Please let us know if we cannot assume that.
+
+SESSION ID will be firstly assigned by the server when the server receives a request from an unknown address client.
+
+PLAYLOAD will be the information. It will be binary if streaming song and text if not streaming song.
+
+Example communications, if we have 3 songs available on server, and their ID's are 0, 1, 2. There are no existing clients yet:
+client sends 'list\r\n'
+server sends '[200]\r\n[0]\r\n[0. SongA\n1.SongB\nSongC\n]\r\n\r\n'
+client sends 'play 3\r\n'
+server sends '[403]\r\n[0]\r\n[]\r\n\r\n'
+client sends 'play 1\r\n'
+server sends '[200]\r\n[0]\r\n[000110100101001....010101010101]\r\n\r\n'
+client sends 'stop\r\n' --- One thing I am not sure is that is it possible the server refuses the "stop"?
+server sends '[200]\r\n[0]\r\n[]\r\n\r\n'
+
+
+For server, once we see '\r\n', we know that message has ended.
+For client, once we see '\r\n\r\n', we know that message has ended.
+
+3. What type of state does the server need to store per-client?  What does that state mean (e.g., the fields in the client struct)?
+[CLIENT ADDRESS] - client socket ADDRESS
+[SESSION ID] - unique ID per client
+[STATUS] - status of the client, PLAY or IDLE
+[SONG ID] - the song the client is playing, if status is PLAY
+[STREAM PROGRESS] - the position of the last bit the server has already sent to the client, if status is PLAY
+
+4. How do messages transition the client/server from one state to another?
+state PLAY: when the user typed "play [song number]" and valid OK is received from the server, the client turns into state of PLAYING (even during the start time it streams and not yet starts to play, the client is in the state of PLAY).
+
+state IDLE: when the user typed "stop" or when a song reaches its end, the client turns into state of IDLE.
+
+5. Anything else I should know about the way it works?
+Client state machine
+STATUS IDLE:
+-> IDLE, if action is [stop] or [list].
+-> IDLE, if action is [play n], and receives 403.
+-> PLAY, if action is [play n], and receives 200.
+
+STATUS PLAY:
+-> IDLE, if action is [stop].
+(-> IDLE, if the song ends) Possibly it does not matter, since even if the song ends and the status stays PLAY, because PLAY could be easily interrupted by another play, and that is the only effective action seen by the users, it would not cause any problem.
+    To better illustrate, for a client whose song ends and stays at PLAY, if the input is play, then it will start to play another song; if the input is stop, it will stay at not playing; if the input is list, it will list all the songs. So there is possibly no need to change the client status to IDLE when the song ends.
+-> PLAY, if action is [play n], and receives 403. Keep playing the original song.
+-> PLAY, if action is [play n], and receives 200. Stop the original streaming, and start to play the new song.
+-> PLAY, if action is list.
+
