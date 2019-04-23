@@ -20,7 +20,7 @@ MSG_TYPE_STOP = '2'
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, addr):
         self.lock = Lock()
 
 
@@ -33,14 +33,18 @@ def client_write(client):
 
     # TODO: Thread that receives commands from the client.  All recv() calls should
     # be contained in this function.
+    return
 
 
 def client_read(client):
+    # TODO:
+    return
 
 
 def get_mp3s(musicdir):
     print("Reading music files...")
     songs = []
+    songlist = []
 
     for filename in os.listdir(musicdir):
         if not filename.endswith(".mp3"):
@@ -48,10 +52,19 @@ def get_mp3s(musicdir):
 
         # TODO: Store song metadata for future use.  You may also want to build
         # the song list once and send to any clients that need it.
+        print("{0} {1}".format(len(songs), filename))
 
-        songs.append(filename)
+        # store song name and index in "songlist"
+        # songlist example: 0.Beethoven
+        songlist.append("{0}. {1}".format(len(songs), filename[:-4]))
 
-    print("Found {0} song(s)!".format(len(songs) + 1))
+        # store song content in 'songs'
+        f = open(musicdir + '/' + filename, 'rb')
+        song_content = f.read()
+        songs.append(song_content)
+
+    print("Found {0} song(s)!".format(len(songs)))
+    return [songs, songlist]
 
 
 def main():
@@ -62,6 +75,7 @@ def main():
 
     port = int(sys.argv[1])
     songs, songlist = get_mp3s(sys.argv[2])
+    print(songlist)
     threads = []
     session_id = 0
 
@@ -72,19 +86,19 @@ def main():
     except socket.error as err:
         print "socket creation failed with error %s" % (err)
 
-    # bind server port to socket
-    s.bind(('', port))
-    s.listen(QUEUE_LENGTH)
+    # # bind server port to socket
+    # s.bind(('', port))
+    # s.listen(QUEUE_LENGTH)
 
-    while True:
-        client = Client()
-        t = Thread(target=client_read, args=(client))
-        threads.append(t)
-        t.start()
-        t = Thread(target=client_write, args=(client))
-        threads.append(t)
-        t.start()
-    s.close()
+    # while True:
+    #     client = Client()
+    #     t = Thread(target=client_read, args=(client))
+    #     threads.append(t)
+    #     t.start()
+    #     t = Thread(target=client_write, args=(client))
+    #     threads.append(t)
+    #     t.start()
+    # s.close()
 
 
 if __name__ == "__main__":
