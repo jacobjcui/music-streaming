@@ -15,6 +15,8 @@ from time import sleep
 # read() method, so we create this wrapper with a read() method for it to
 # call, and it won't know the difference.
 # NOTE: You probably don't need to modify this class.
+
+
 class mywrapper(object):
     def __init__(self):
         self.mf = None
@@ -100,6 +102,8 @@ def main():
             cmd = line
 
         # TODO: Send messages to the server when the user types things.
+        sock.sendall(line)
+
         if cmd in ['l', 'list']:
             print 'The user asked for list.'
 
@@ -111,6 +115,7 @@ def main():
 
         if cmd in ['quit', 'q', 'exit']:
             sys.exit(0)
+
 
 if __name__ == '__main__':
     main()

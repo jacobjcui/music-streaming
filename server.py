@@ -9,6 +9,7 @@ from threading import Lock, Thread
 
 QUEUE_LENGTH = 10
 SEND_BUFFER = 4096
+RECV_BUFFER_SIZE = 32
 
 MSG_STATUS_SUCCESS = '200'
 MSG_STATUS_FAILURE = '404'
@@ -20,8 +21,15 @@ MSG_TYPE_STOP = '2'
 
 
 class Client:
-    def __init__(self, addr):
+    def __init__(self, conn, addr, session_id):
         self.lock = Lock()
+        self.conn = conn
+        self.addr = addr
+        self.session_id = "{0:0=3d}".format(session_id)  # convert to string
+        self.cmd = ""
+        self.optional_arg = -1
+
+        print("Client {0} is connected".format(self.session_id))
 
 
 # TODO: Thread that sends music and lists to the client.  All send() calls
@@ -29,16 +37,34 @@ class Client:
 # be passed to this thread through the associated Client object.  Make sure you
 # use locks or similar synchronization tools to ensure that the two threads play
 # nice with one another!
-def client_write(client):
 
-    # TODO: Thread that receives commands from the client.  All recv() calls should
-    # be contained in this function.
-    return
+def client_write(client):
+    print("in client_write cmd {0}".format(client.cmd))
+    if client.cmd == "":
+        print >>sys.stderr, 'no more data from', client.addr
+        client.conn.close()
+        return
+
+    message = "echo " + client.cmd
+    client.conn.sendall(message)
+
+
+# TODO: Thread that receives commands from the client.  All recv() calls should
+# be contained in this function.
 
 
 def client_read(client):
-    # TODO:
-    return
+    line = client.conn.recv(RECV_BUFFER_SIZE)
+    print("Client {0} requests [{1}]".format(client.session_id, line))
+
+    # store cmd and args in client instance
+    if ' ' in line:
+        cmd, args = line.split(' ', 1)
+        client.optional_arg = args
+    else:
+        cmd = line
+    client.cmd = cmd
+    print("in client_read cmd {0}".format(client.cmd))
 
 
 def get_mp3s(musicdir):
@@ -52,7 +78,7 @@ def get_mp3s(musicdir):
 
         # TODO: Store song metadata for future use.  You may also want to build
         # the song list once and send to any clients that need it.
-        print("{0} {1}".format(len(songs), filename))
+        print("Found {0} {1}".format(len(songs), filename))
 
         # store song name and index in "songlist"
         # songlist example: 0.Beethoven
@@ -75,9 +101,8 @@ def main():
 
     port = int(sys.argv[1])
     songs, songlist = get_mp3s(sys.argv[2])
-    print(songlist)
     threads = []
-    session_id = 0
+    session_id = 1
 
     # TODO: create a socket and accept incoming connections
     # open socket
@@ -86,19 +111,41 @@ def main():
     except socket.error as err:
         print "socket creation failed with error %s" % (err)
 
-    # # bind server port to socket
-    # s.bind(('', port))
-    # s.listen(QUEUE_LENGTH)
+    # bind server port to socket
+    s.bind(('', port))
+    s.listen(QUEUE_LENGTH)
 
-    # while True:
-    #     client = Client()
-    #     t = Thread(target=client_read, args=(client))
-    #     threads.append(t)
-    #     t.start()
-    #     t = Thread(target=client_write, args=(client))
-    #     threads.append(t)
-    #     t.start()
-    # s.close()
+    while True:
+        print("******server0")
+        client_conn, client_addr = s.accept()
+
+        # each loop is one command from the client
+        while True:
+            print("******server1")
+            client = Client(client_conn, client_addr, session_id)
+            session_id += 1
+
+            print("******server2")
+            kill_thread = False
+            t = Thread(target=client_read, args=(client,))
+            threads.append(t)
+            t.start()
+            print("******wait for join 1")
+            t.join()
+            print("******joined 1")
+
+            print("******server3")
+            t = Thread(target=client_write, args=(client,))
+            threads.append(t)
+            t.start()
+            print("******wait for join 2")
+            t.join()
+            print("******joined 2")
+
+            print("******server4")
+        client_conn.close()
+
+    s.close()
 
 
 if __name__ == "__main__":
