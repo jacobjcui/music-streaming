@@ -38,7 +38,8 @@ class mywrapper(object):
 def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO
-        pass
+        data = sock.recv(1024)
+        # print(data)
 
 
 # If there is song data stored in the wrapper object, play it!

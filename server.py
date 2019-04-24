@@ -28,6 +28,7 @@ class Client:
         self.session_id = "{0:0=3d}".format(session_id)  # convert to string
         self.cmd = ""
         self.optional_arg = -1
+        self.no_input = False
 
         print("Client {0} is connected".format(self.session_id))
 
@@ -39,7 +40,6 @@ class Client:
 # nice with one another!
 
 def client_write(client):
-    print("in client_write cmd {0}".format(client.cmd))
     if client.cmd == "":
         print >>sys.stderr, 'no more data from', client.addr
         client.conn.close()
@@ -56,6 +56,10 @@ def client_write(client):
 def client_read(client):
     line = client.conn.recv(RECV_BUFFER_SIZE)
     print("Client {0} requests [{1}]".format(client.session_id, line))
+
+    if not line:
+        client.no_input = True
+        return
 
     # store cmd and args in client instance
     if ' ' in line:
@@ -121,28 +125,22 @@ def main():
 
         # each loop is one command from the client
         while True:
-            print("******server1")
             client = Client(client_conn, client_addr, session_id)
             session_id += 1
 
-            print("******server2")
             kill_thread = False
             t = Thread(target=client_read, args=(client,))
             threads.append(t)
             t.start()
-            print("******wait for join 1")
             t.join()
-            print("******joined 1")
+            if client.no_input:
+                break
 
-            print("******server3")
             t = Thread(target=client_write, args=(client,))
             threads.append(t)
             t.start()
-            print("******wait for join 2")
             t.join()
-            print("******joined 2")
 
-            print("******server4")
         client_conn.close()
 
     s.close()
