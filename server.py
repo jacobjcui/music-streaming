@@ -33,30 +33,32 @@ class Client:
         self.addr = addr
         self.session_id = "{0:0=3d}".format(session_id)  # convert to string
         self.cmd = ""
-        self.optional_arg = -1
+        self.optional_arg = ""
         self.alive = True
         self.state = STATE_NOT_PROCESSED
 
         print("Client {0} is connected".format(self.session_id))
 
 
-# TODO: Thread that sends music and lists to the client.  All send() calls
+# Thread that sends music and lists to the client.  All send() calls
 # should be contained in this function.  Control signals from client_read could
 # be passed to this thread through the associated Client object.  Make sure you
 # use locks or similar synchronization tools to ensure that the two threads play
 # nice with one another!
 def client_write(client):
     while True:
+        # close connection is the client disconnects
         if client.alive == False:
             print("Closes connection with Client {0}".format(
                 client.session_id))
             break
+        # busy loop when the client first connects in with empty cmd
         if client.cmd == "":
             continue
+        # busy loop when the client has already processed the last cmd
         if client.state == STATE_DONE_PROCESSING:
             continue
-        message = compose_response_to_client(client)
-        client.conn.sendall(message)
+        send_response_to_client(client)
         # set client state
         client.lock.acquire()
         try:
@@ -67,7 +69,7 @@ def client_write(client):
     client.conn.close()
 
 
-def compose_response_to_client(client):
+def send_response_to_client(client):
     message = ""
     payload = ""
     if client.cmd == "list":
@@ -75,20 +77,39 @@ def compose_response_to_client(client):
         payload = payload[:-1]
         message = "[%s][%s][%s][%d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
+        client.conn.sendall(message)
     elif client.cmd == "play":
-        return message
+        # song index does not exist
+        if len(client.optional_arg) <= 0:
+            message = "[%s][%s][%s][%d][%s]" % (
+                MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
+            client.conn.sendall(message)
+            return
+        # song index is invalid
+        song_index = int(client.optional_arg)
+        if song_index >= len(songlist):
+            message = "[%s][%s][%s][%d][%s]" % (
+                MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
+            client.conn.sendall(message)
+            return
+        song_content = songs[song_index]
+        payload = str(len(song_content))
+        message = message = "[%s][%s][%s][%d][%s]" % (
+            MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
+        client.conn.sendall(message)
     elif client.cmd == "stop":
         message = "[%s][%s][%s][%d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
+        client.conn.sendall(message)
     else:
         print("Invalid command [{0}] from Client {1}".format(
             client.cmd, client.session_id))
+        message = "[%s][%s][%s][%d][%s]" % (
+            MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_STOP, len(payload), payload)
+        client.conn.sendall(message)
 
-    print("[message]={0}".format(message))
-    return message
 
-
-# TODO: Thread that receives commands from the client.  All recv() calls should
+# Thread that receives commands from the client.  All recv() calls should
 # be contained in this function.
 def client_read(client):
     while True:
@@ -100,7 +121,12 @@ def client_read(client):
         # store cmd and args in client instance
         if ' ' in line:
             cmd, args = line.split(' ', 1)
-            client.optional_arg = args
+            # store args for [play]
+            client.lock.acquire()
+            try:
+                client.optional_arg = args
+            finally:
+                client.lock.release()
         else:
             cmd = line
         # if the cmd is not valid, then go to next round
@@ -125,24 +151,19 @@ def is_valid_command(cmd):
 
 def get_mp3s(musicdir):
     print("Reading music files...")
-
     for filename in os.listdir(musicdir):
         if not filename.endswith(".mp3"):
             continue
-
-        # TODO: Store song metadata for future use.  You may also want to build
+        # Store song metadata for future use.  You may also want to build
         # the song list once and send to any clients that need it.
         print("Found {0} {1}".format(len(songs), filename))
-
         # store song name and index in "songlist"
         # songlist example: 0.Beethoven
         songlist.append("{0}. {1}\n".format(len(songs), filename[:-4]))
-
         # store song content in 'songs'
         f = open(musicdir + '/' + filename, 'rb')
         song_content = f.read()
         songs.append(song_content)
-
     print("Found {0} song(s)!".format(len(songs)))
     return [songs, songlist]
 
