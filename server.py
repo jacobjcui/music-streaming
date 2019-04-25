@@ -9,6 +9,7 @@ from threading import Lock, Thread
 
 QUEUE_LENGTH = 10
 SEND_BUFFER = 4096
+PAYLOAD_BUFFER_SIZE = 4000
 RECV_BUFFER_SIZE = 32
 
 MSG_STATUS_SUCCESS = '200'
@@ -21,8 +22,9 @@ STATE_NOT_PROCESSED = 0
 STATE_PROCESSING = 1
 STATE_DONE_PROCESSING = 2
 
-songs = []
+songs = ""
 songlist = []
+music_dir = ""
 
 
 # per-client struct
@@ -52,7 +54,7 @@ def client_write(client):
             print("Closes connection with Client {0}".format(
                 client.session_id))
             break
-        # busy loop when the client first connects in with empty cmd
+        # busy loop when the client first connects in with no cmd
         if client.cmd == "":
             continue
         # busy loop when the client has already processed the last cmd
@@ -73,8 +75,7 @@ def send_response_to_client(client):
     message = ""
     payload = ""
     if client.cmd == "list":
-        payload = "".join(songlist)
-        payload = payload[:-1]
+        payload = songs
         message = "[%s][%s][%s][%d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
         client.conn.sendall(message)
@@ -92,11 +93,23 @@ def send_response_to_client(client):
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             client.conn.sendall(message)
             return
-        song_content = songs[song_index]
-        payload = str(len(song_content))
-        message = message = "[%s][%s][%s][%d][%s]" % (
-            MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-        client.conn.sendall(message)
+        # retrieve song content and send in a series of packets
+        filename = songlist[song_index] + '.mp3'
+        f = open(music_dir + '/' + filename, 'rb')
+        total_num_of_bytes_read = 0
+        bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
+        while (len(bytes_read) > 0):
+            total_num_of_bytes_read += len(bytes_read)
+            payload = bytes_read
+            message = "[%s][%s][%s][%d][%s]" % (
+                MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
+            # client interrupt by [stop]
+            if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
+                break
+            client.conn.sendall(message)
+            f.seek(total_num_of_bytes_read)
+            bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
+        f.close()
     elif client.cmd == "stop":
         message = "[%s][%s][%s][%d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
@@ -151,20 +164,22 @@ def is_valid_command(cmd):
 
 def get_mp3s(musicdir):
     print("Reading music files...")
+    global music_dir
+    music_dir = musicdir
+    songs_temp = []
     for filename in os.listdir(musicdir):
         if not filename.endswith(".mp3"):
             continue
         # Store song metadata for future use.  You may also want to build
         # the song list once and send to any clients that need it.
-        print("Found {0} {1}".format(len(songs), filename))
+        print("Found {0} {1}".format(len(songlist), filename))
         # store song name and index in "songlist"
-        # songlist example: 0.Beethoven
-        songlist.append("{0}. {1}\n".format(len(songs), filename[:-4]))
-        # store song content in 'songs'
-        f = open(musicdir + '/' + filename, 'rb')
-        song_content = f.read()
-        songs.append(song_content)
-    print("Found {0} song(s)!".format(len(songs)))
+        songs_temp.append("{0}. {1}\n".format(len(songlist), filename[:-4]))
+        songlist.append("{0}".format(filename[:-4]))
+
+    songs = "".join(songs_temp)
+    songs = songs[:-1]
+    print("Found {0} song(s)!".format(len(songlist)))
     return [songs, songlist]
 
 
@@ -175,11 +190,12 @@ def main():
         sys.exit("Directory '{0}' does not exist".format(sys.argv[2]))
 
     port = int(sys.argv[1])
+    global songs, songlist
     songs, songlist = get_mp3s(sys.argv[2])
     threads = []
     session_id = 1
 
-    # TODO: create a socket and accept incoming connections
+    # create a socket and accept incoming connections
     # open socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

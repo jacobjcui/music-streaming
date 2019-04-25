@@ -9,14 +9,17 @@ import sys
 import threading
 from time import sleep
 
+
+total_num_of_data = 0
+RECV_BUFFER_SIZE = 4096
+
+
 # The Mad audio library we're using expects to be given a file object, but
 # we're not dealing with files, we're reading audio data over the network.  We
 # use this object to trick it.  All it really wants from the file object is the
 # read() method, so we create this wrapper with a read() method for it to
 # call, and it won't know the difference.
 # NOTE: You probably don't need to modify this class.
-
-
 class mywrapper(object):
     def __init__(self):
         self.mf = None
@@ -38,8 +41,10 @@ class mywrapper(object):
 def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO
-        data = sock.recv(1024)
-        print(data)
+        data = sock.recv(RECV_BUFFER_SIZE)
+        global total_num_of_data
+        total_num_of_data += len(data)
+        print(total_num_of_data)
 
 
 # If there is song data stored in the wrapper object, play it!
@@ -103,6 +108,8 @@ def main():
             cmd = line
 
         # TODO: Send messages to the server when the user types things.
+        global total_num_of_data
+        total_num_of_data = 0
         sock.sendall(line)
 
         # if cmd in ['l', 'list']:
