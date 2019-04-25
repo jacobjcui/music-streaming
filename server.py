@@ -17,9 +17,12 @@ MSG_TYPE_LIST = '0'
 MSG_TYPE_PLAY = '1'
 MSG_TYPE_STOP = '2'
 
+STATE_NOT_PROCESSED = 0
+STATE_PROCESSING = 1
+STATE_DONE_PROCESSING = 2
+
+
 # per-client struct
-
-
 class Client:
     def __init__(self, conn, addr, session_id):
         self.lock = Lock()
@@ -28,7 +31,8 @@ class Client:
         self.session_id = "{0:0=3d}".format(session_id)  # convert to string
         self.cmd = ""
         self.optional_arg = -1
-        self.no_input = False
+        self.active = True
+        self.state = STATE_NOT_PROCESSED
 
         print("Client {0} is connected".format(self.session_id))
 
@@ -38,37 +42,59 @@ class Client:
 # be passed to this thread through the associated Client object.  Make sure you
 # use locks or similar synchronization tools to ensure that the two threads play
 # nice with one another!
-
 def client_write(client):
-    if client.cmd == "":
-        print >>sys.stderr, 'no more data from', client.addr
-        client.conn.close()
-        return
+    while True:
+        if client.active == False:
+            print >>sys.stderr, 'no more data from', client.addr
+            break
 
-    message = "echo " + client.cmd
-    client.conn.sendall(message)
+        if client.cmd == "":
+            continue
+
+        if client.state == STATE_DONE_PROCESSING:
+            continue
+
+        message = "echo " + client.cmd
+        client.conn.sendall(message)
+        client.state = STATE_DONE_PROCESSING
+
+    client.conn.close()
 
 
 # TODO: Thread that receives commands from the client.  All recv() calls should
 # be contained in this function.
-
-
 def client_read(client):
-    line = client.conn.recv(RECV_BUFFER_SIZE)
-    print("Client {0} requests [{1}]".format(client.session_id, line))
+    while True:
+        line = client.conn.recv(RECV_BUFFER_SIZE)
+        print("Client {0} requests [{1}]".format(client.session_id, line))
+        if not line or line.decode('utf-8') == 'quit':
+            client.active = False
+            break
+        # store cmd and args in client instance
+        if ' ' in line:
+            cmd, args = line.split(' ', 1)
+            client.optional_arg = args
+        else:
+            cmd = line
+        client.cmd = cmd
+        client.state = STATE_NOT_PROCESSED
+        print("Client {0} sets command to [{1}]".format(
+            client.session_id, client.cmd))
+    print("Client {0} disconnects".format(client.session_id))
 
-    if not line:
-        client.no_input = True
-        return
-
-    # store cmd and args in client instance
-    if ' ' in line:
-        cmd, args = line.split(' ', 1)
-        client.optional_arg = args
-    else:
-        cmd = line
-    client.cmd = cmd
-    print("in client_read cmd {0}".format(client.cmd))
+    # line = client.conn.recv(RECV_BUFFER_SIZE)
+    # print("Client {0} requests [{1}]".format(client.session_id, line))
+    # if not line:
+    #     client.no_input = True
+    #     return
+    # # store cmd and args in client instance
+    # if ' ' in line:
+    #     cmd, args = line.split(' ', 1)
+    #     client.optional_arg = args
+    # else:
+    #     cmd = line
+    # client.cmd = cmd
+    # print("in client_read cmd {0}".format(client.cmd))
 
 
 def get_mp3s(musicdir):
@@ -120,28 +146,21 @@ def main():
     s.listen(QUEUE_LENGTH)
 
     while True:
-        print("******server0")
+        # print("******0*******")
         client_conn, client_addr = s.accept()
 
-        # each loop is one command from the client
-        while True:
-            client = Client(client_conn, client_addr, session_id)
-            session_id += 1
+        client = Client(client_conn, client_addr, session_id)
+        session_id += 1
 
-            kill_thread = False
-            t = Thread(target=client_read, args=(client,))
-            threads.append(t)
-            t.start()
-            t.join()
-            if client.no_input:
-                break
+        # print("******1*******")
+        t = Thread(target=client_read, args=(client,))
+        threads.append(t)
+        t.start()
 
-            t = Thread(target=client_write, args=(client,))
-            threads.append(t)
-            t.start()
-            t.join()
-
-        client_conn.close()
+        # print("******2*******")
+        t = Thread(target=client_write, args=(client,))
+        threads.append(t)
+        t.start()
 
     s.close()
 
