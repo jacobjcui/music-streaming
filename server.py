@@ -21,6 +21,9 @@ STATE_NOT_PROCESSED = 0
 STATE_PROCESSING = 1
 STATE_DONE_PROCESSING = 2
 
+songs = []
+songlist = []
+
 
 # per-client struct
 class Client:
@@ -31,7 +34,7 @@ class Client:
         self.session_id = "{0:0=3d}".format(session_id)  # convert to string
         self.cmd = ""
         self.optional_arg = -1
-        self.active = True
+        self.alive = True
         self.state = STATE_NOT_PROCESSED
 
         print("Client {0} is connected".format(self.session_id))
@@ -44,21 +47,45 @@ class Client:
 # nice with one another!
 def client_write(client):
     while True:
-        if client.active == False:
-            print >>sys.stderr, 'no more data from', client.addr
+        if client.alive == False:
+            print("Closes connection with Client {0}".format(
+                client.session_id))
             break
-
         if client.cmd == "":
             continue
-
         if client.state == STATE_DONE_PROCESSING:
             continue
-
-        message = "echo " + client.cmd
+        message = compose_response_to_client(client)
         client.conn.sendall(message)
-        client.state = STATE_DONE_PROCESSING
+        # set client state
+        client.lock.acquire()
+        try:
+            client.state = STATE_DONE_PROCESSING
+        finally:
+            client.lock.release()
 
     client.conn.close()
+
+
+def compose_response_to_client(client):
+    message = ""
+    payload = ""
+    if client.cmd == "list":
+        payload = "".join(songlist)
+        payload = payload[:-1]
+        message = "[%s][%s][%s][%d][%s]" % (
+            MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
+    elif client.cmd == "play":
+        return message
+    elif client.cmd == "stop":
+        message = "[%s][%s][%s][%d][%s]" % (
+            MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
+    else:
+        print("Invalid command [{0}] from Client {1}".format(
+            client.cmd, client.session_id))
+
+    print("[message]={0}".format(message))
+    return message
 
 
 # TODO: Thread that receives commands from the client.  All recv() calls should
@@ -68,7 +95,7 @@ def client_read(client):
         line = client.conn.recv(RECV_BUFFER_SIZE)
         print("Client {0} requests [{1}]".format(client.session_id, line))
         if not line or line.decode('utf-8') == 'quit':
-            client.active = False
+            client.alive = False
             break
         # store cmd and args in client instance
         if ' ' in line:
@@ -76,31 +103,28 @@ def client_read(client):
             client.optional_arg = args
         else:
             cmd = line
-        client.cmd = cmd
-        client.state = STATE_NOT_PROCESSED
-        print("Client {0} sets command to [{1}]".format(
-            client.session_id, client.cmd))
+        # if the cmd is not valid, then go to next round
+        if not is_valid_command(cmd):
+            continue
+        # set client status
+        client.lock.acquire()
+        try:
+            client.cmd = cmd
+            client.state = STATE_NOT_PROCESSED
+        finally:
+            client.lock.release()
+
     print("Client {0} disconnects".format(client.session_id))
 
-    # line = client.conn.recv(RECV_BUFFER_SIZE)
-    # print("Client {0} requests [{1}]".format(client.session_id, line))
-    # if not line:
-    #     client.no_input = True
-    #     return
-    # # store cmd and args in client instance
-    # if ' ' in line:
-    #     cmd, args = line.split(' ', 1)
-    #     client.optional_arg = args
-    # else:
-    #     cmd = line
-    # client.cmd = cmd
-    # print("in client_read cmd {0}".format(client.cmd))
+
+def is_valid_command(cmd):
+    if cmd == "list" or cmd == "play" or cmd == "stop":
+        return True
+    return False
 
 
 def get_mp3s(musicdir):
     print("Reading music files...")
-    songs = []
-    songlist = []
 
     for filename in os.listdir(musicdir):
         if not filename.endswith(".mp3"):
@@ -112,7 +136,7 @@ def get_mp3s(musicdir):
 
         # store song name and index in "songlist"
         # songlist example: 0.Beethoven
-        songlist.append("{0}. {1}".format(len(songs), filename[:-4]))
+        songlist.append("{0}. {1}\n".format(len(songs), filename[:-4]))
 
         # store song content in 'songs'
         f = open(musicdir + '/' + filename, 'rb')

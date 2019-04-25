@@ -8,11 +8,8 @@ stop\r\n - stop playing the current song. No action if there is no song playing.
 
 
 2. How are your messages formatted?  Are they text or binary, and what does the header look like?  How do you determine where one message ends and another begins?
-single message from server:
-    [STATUS]\r\n
-    [SESSION ID]\r\n 
-    [PAYLOAD]\r\n
-    \r\n 
+
+[status] is consistent in size as [200] or [403], and we will make session id to be three digits with the first id to be [001] and make an assumption there will be fewer than 1000 client connections. Then from the server, we also indicate what request the message responds to, 0 means list response, 1 means play streaming response, 2 means stop response. The first three header content has consistent size. Next, we will also include the size of payload so that we can parse the payload to the correct size. After this, it would be the payload. So the overall content will be [200][001][1][5]00010[403][001][0] for two messages, while the first message represents successful video streaming, and the second represents failed list retrieval for client 001.
 
 STATUS = 200 or 403. 200 means OK, and 403 means not valid, especially when the command is play n and n is not valid. We simpilify the model by assuming the internet connection is always good. Please let us know if we cannot assume that.
 

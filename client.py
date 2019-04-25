@@ -39,7 +39,7 @@ def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO
         data = sock.recv(1024)
-        # print(data)
+        print(data)
 
 
 # If there is song data stored in the wrapper object, play it!
@@ -105,14 +105,14 @@ def main():
         # TODO: Send messages to the server when the user types things.
         sock.sendall(line)
 
-        if cmd in ['l', 'list']:
-            print 'The user asked for list.'
+        # if cmd in ['l', 'list']:
+        #     print 'The user asked for list.'
 
-        if cmd in ['p', 'play']:
-            print 'The user asked to play:', args
+        # if cmd in ['p', 'play']:
+        #     print 'The user asked to play:', args
 
-        if cmd in ['s', 'stop']:
-            print 'The user asked for stop.'
+        # if cmd in ['s', 'stop']:
+        #     print 'The user asked for stop.'
 
         if cmd in ['quit', 'q', 'exit']:
             sys.exit(0)
@@ -120,16 +120,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-def tcplink(sock, addr):
-    print('Accept new connection from %s:%s...' % addr)
-    sock.send(b'Welcome!')
-    while True:
-        data = sock.recv(1024)
-        time.sleep(1)
-        if not data or data.decode('utf-8') == 'exit':
-            break
-        sock.send(('Hello, %s!' % data.decode('utf-8')).encode('utf-8'))
-    sock.close()
-    print('Connection from %s:%s closed.' % addr)
