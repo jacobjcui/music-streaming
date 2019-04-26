@@ -42,9 +42,10 @@ def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO
         data = sock.recv(RECV_BUFFER_SIZE)
-        global total_num_of_data
-        total_num_of_data += len(data)
-        print(total_num_of_data)
+        # global total_num_of_data
+        # total_num_of_data += len(data)
+        # print(total_num_of_data)
+        print(data)
 
 
 # If there is song data stored in the wrapper object, play it!

@@ -76,20 +76,20 @@ def send_response_to_client(client):
     payload = ""
     if client.cmd == "list":
         payload = songs
-        message = "[%s][%s][%s][%d][%s]" % (
+        message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
         client.conn.sendall(message)
     elif client.cmd == "play":
         # song index does not exist
         if len(client.optional_arg) <= 0:
-            message = "[%s][%s][%s][%d][%s]" % (
+            message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             client.conn.sendall(message)
             return
         # song index is invalid
         song_index = int(client.optional_arg)
         if song_index >= len(songlist):
-            message = "[%s][%s][%s][%d][%s]" % (
+            message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             client.conn.sendall(message)
             return
@@ -101,7 +101,7 @@ def send_response_to_client(client):
         while (len(bytes_read) > 0):
             total_num_of_bytes_read += len(bytes_read)
             payload = bytes_read
-            message = "[%s][%s][%s][%d][%s]" % (
+            message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
             if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
@@ -111,13 +111,13 @@ def send_response_to_client(client):
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         f.close()
     elif client.cmd == "stop":
-        message = "[%s][%s][%s][%d][%s]" % (
+        message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
     else:
         print("Invalid command [{0}] from Client {1}".format(
             client.cmd, client.session_id))
-        message = "[%s][%s][%s][%d][%s]" % (
+        message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
 
