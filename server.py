@@ -38,7 +38,6 @@ class Client:
         self.optional_arg = ""
         self.alive = True
         self.state = STATE_NOT_PROCESSED
-
         print("Client {0} is connected".format(self.session_id))
 
 
@@ -67,7 +66,6 @@ def client_write(client):
             client.state = STATE_DONE_PROCESSING
         finally:
             client.lock.release()
-
     client.conn.close()
 
 
@@ -152,7 +150,6 @@ def client_read(client):
             client.state = STATE_NOT_PROCESSED
         finally:
             client.lock.release()
-
     print("Client {0} disconnects".format(client.session_id))
 
 
@@ -176,7 +173,6 @@ def get_mp3s(musicdir):
         # store song name and index in "songlist"
         songs_temp.append("{0}. {1}\n".format(len(songlist), filename[:-4]))
         songlist.append("{0}".format(filename[:-4]))
-
     songs = "".join(songs_temp)
     songs = songs[:-1]
     print("Found {0} song(s)!".format(len(songlist)))
@@ -207,18 +203,12 @@ def main():
     s.listen(QUEUE_LENGTH)
 
     while True:
-        # print("******0*******")
         client_conn, client_addr = s.accept()
-
         client = Client(client_conn, client_addr, session_id)
         session_id += 1
-
-        # print("******1*******")
         t = Thread(target=client_read, args=(client,))
         threads.append(t)
         t.start()
-
-        # print("******2*******")
         t = Thread(target=client_write, args=(client,))
         threads.append(t)
         t.start()
