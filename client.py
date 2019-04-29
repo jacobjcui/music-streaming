@@ -10,8 +10,46 @@ import threading
 from time import sleep
 
 
+
+
 total_num_of_data = 0
 RECV_BUFFER_SIZE = 4096
+
+QUEUE_LENGTH = 10
+SEND_BUFFER = 4096
+PAYLOAD_BUFFER_SIZE = 4000
+RECV_BUFFER_SIZE = 32
+
+MSG_STATUS_SUCCESS = '200'
+MSG_STATUS_FAILURE = '404'
+MSG_TYPE_LIST = '0'
+MSG_TYPE_PLAY = '1'
+MSG_TYPE_STOP = '2'
+
+STATE_NOT_PROCESSED = '0'
+STATE_PROCESSING = '1'
+STATE_DONE_PROCESSING = '2'
+
+def msg_parser(data):
+    
+    
+    # print("=====0=======\n")
+    # print(data)
+    count = 0
+    status = data[1:4]
+    session_id = data[6:9]
+    msg_type = data[11:12]
+    length_of_payload_str = data[14:18]
+    
+    content = data[20:len(data)-1]
+    # print("======1=======\n")
+    # print(content)
+    # print("======2=======\n")
+    return status, session_id, length_of_payload_str, msg_type, content
+
+
+
+
 
 
 # The Mad audio library we're using expects to be given a file object, but
@@ -40,12 +78,35 @@ class mywrapper(object):
 # it too!
 def recv_thread_func(wrap, cond_filled, sock):
     while True:
-        # TODO
+        # TODO::What if the content itself has brackets? maybe force to count till last
+        # bracket?
         data = sock.recv(RECV_BUFFER_SIZE)
+        count = 0
+        count_debug = 0
+        while count < 5:
+            count_debug += 1
+            for c in data:
+                if c == ']':
+                    count += 1
+                    
+            data += sock.recv(RECV_BUFFER_SIZE)
+        # print(count_debug)
+        
+        
+        status, session_id, length_of_payload_str, msg_type, content = msg_parser(data)
+        # print("message type")
+        
+        # print(msg_type)
+        if msg_type == MSG_TYPE_LIST:
+        #     print("yes")
+             print(content)
+        # else:
+        #     print("not yet")
         # global total_num_of_data
         # total_num_of_data += len(data)
         # print(total_num_of_data)
-        print(data)
+        
+        
 
 
 # If there is song data stored in the wrapper object, play it!
@@ -60,6 +121,10 @@ def play_thread_func(wrap, cond_filled, dev):
         buf = wrap.mf.read()
         dev.play(buffer(buf), len(buf))
         """
+        # wrap.data = data
+        # wrap.mf = mad.MadFile(wrap)
+        # buf = wrap.mf.read()
+        # dev.play(buffer(buf), len(buf))
 
 
 def main():
