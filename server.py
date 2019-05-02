@@ -35,7 +35,7 @@ class Client:
         self.addr = addr
         self.session_id = "{0:0=3d}".format(session_id)  # convert to string
         self.cmd = ""
-        self.optional_arg = ""
+        self.optional_arg = -1
         self.alive = True
         self.state = STATE_NOT_PROCESSED
         print("Client {0} is connected".format(self.session_id))
@@ -76,19 +76,23 @@ def send_response_to_client(client):
         payload = songs
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
+        print("list message")
+        print(message)
         client.conn.sendall(message)
     elif client.cmd == "play":
         # song index does not exist
-        if len(client.optional_arg) <= 0:
+        if client.optional_arg == -1:
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
+            
             client.conn.sendall(message)
             return
         # song index is invalid
-        song_index = int(client.optional_arg)
+        song_index = client.optional_arg
         if song_index >= len(songlist):
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
+            
             client.conn.sendall(message)
             return
         # retrieve song content and send in a series of packets
@@ -96,15 +100,23 @@ def send_response_to_client(client):
         f = open(music_dir + '/' + filename, 'rb')
         total_num_of_bytes_read = 0
         bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
+        
         while (len(bytes_read) > 0):
             total_num_of_bytes_read += len(bytes_read)
             payload = bytes_read
-            message = "[%s][%s][%s][%04d][%s]" % (
+            message = "[%s][%03d][%s][%04d][%s]" % (
                 MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
             if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
                 break
+            #  
+            print(len(message))
+            # print(message[0:50])
+           
             client.conn.sendall(message)
+            
+            # if message[0] != '[':
+            #     print(message[0:21])
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         f.close()
@@ -133,9 +145,10 @@ def client_read(client):
         if ' ' in line:
             cmd, args = line.split(' ', 1)
             # store args for [play]
+            
             client.lock.acquire()
             try:
-                client.optional_arg = args
+                client.optional_arg = int(args)
             finally:
                 client.lock.release()
         else:

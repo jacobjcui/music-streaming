@@ -21,7 +21,7 @@ class mywrapper(object):
     # When it asks to read a specific size, give it that many bytes, and
     # update our remaining data.
     def read(self, size):
-        print size
+        # print size
         result = self.data[:size]
         self.data = self.data[size:]
         return result
@@ -56,7 +56,7 @@ def main():
 
         dev.play(buffer(buf), len(buf))
         count += 1
-        print count
+        #print count
 
 
 if __name__ == '__main__':

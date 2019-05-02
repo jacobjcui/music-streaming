@@ -18,7 +18,6 @@ RECV_BUFFER_SIZE = 4096
 QUEUE_LENGTH = 10
 SEND_BUFFER = 4096
 PAYLOAD_BUFFER_SIZE = 4000
-RECV_BUFFER_SIZE = 32
 
 MSG_STATUS_SUCCESS = '200'
 MSG_STATUS_FAILURE = '404'
@@ -30,22 +29,37 @@ STATE_NOT_PROCESSED = '0'
 STATE_PROCESSING = '1'
 STATE_DONE_PROCESSING = '2'
 
+# 0 when main_flag should run
+main_flag = 0
 def msg_parser(data):
     
     
-    # print("=====0=======\n")
+    print("=====0=======\n")
     # print(data)
     count = 0
+    #print(data[0:21])
+    print("=====1=======\n")
     status = data[1:4]
+   #print("status : %s" % status)
     session_id = data[6:9]
+   # print("session id: %s" % session_id)
     msg_type = data[11:12]
+   # print("msg_type: %s" % msg_type)
     length_of_payload_str = data[14:18]
+   # print("length_of_payload_str: %s" % length_of_payload_str)
+    num_start = 0
+    print(length_of_payload_str)
+    for ch in length_of_payload_str:
+        if ch == '0':
+            num_start += 1
+        else:
+            break
+    print(length_of_payload_str[num_start:])
+    length_of_payload = int(length_of_payload_str[num_start:])
     
+
     content = data[20:len(data)-1]
-    # print("======1=======\n")
-    # print(content)
-    # print("======2=======\n")
-    return status, session_id, length_of_payload_str, msg_type, content
+    return status, session_id, length_of_payload, msg_type, content
 
 
 
@@ -70,7 +84,7 @@ class mywrapper(object):
         self.data = self.data[size:]
         return result
 
-
+# def list_play_packet_thread_func(wrap, cond_filled, sock):
 # Receive messages.  If they're responses to info/list, print
 # the results for the user to see.  If they contain song data, the
 # data needs to be added to the wrapper object.  Be sure to protect
@@ -80,31 +94,57 @@ def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
-        data = sock.recv(RECV_BUFFER_SIZE)
+        cond_filled.acquire()
+        data = sock.recv(4021)
+        print("===incoming length check===")
+        print(len(data))
+        print("===incoming length check===")
+        # print("data")
+        print(data[0:30])
         count = 0
         count_debug = 0
-        while count < 5:
-            count_debug += 1
-            for c in data:
-                if c == ']':
-                    count += 1
-                    
-            data += sock.recv(RECV_BUFFER_SIZE)
+        # while count < 5:
+            
+        #     count_debug += 1
+        #     for c in data:
+        #         if c == ']':
+        #             count += 1
+        
+                
+        #data += sock.recv(RECV_BUFFER_SIZE)
         # print(count_debug)
         
         
-        status, session_id, length_of_payload_str, msg_type, content = msg_parser(data)
-        # print("message type")
+        status, session_id, length_of_payload, msg_type, content = msg_parser(data)
+        
+        while length_of_payload > len(data):
+            print("inside loop")
+            data += sock.recv(RECV_BUFFER_SIZE)
+            
         
         # print(msg_type)
         if msg_type == MSG_TYPE_LIST:
         #     print("yes")
              print(content)
+        elif msg_type == MSG_TYPE_PLAY:
+           
+            if wrap.data == None:
+                wrap.data = content
+            else:
+                wrap.data += content
+        cond_filled.notify()
+        cond_filled.release()
+        
+        
+        main_flag = 0
+        
+        
         # else:
         #     print("not yet")
         # global total_num_of_data
         # total_num_of_data += len(data)
         # print(total_num_of_data)
+
         
         
 
@@ -121,10 +161,25 @@ def play_thread_func(wrap, cond_filled, dev):
         buf = wrap.mf.read()
         dev.play(buffer(buf), len(buf))
         """
-        # wrap.data = data
-        # wrap.mf = mad.MadFile(wrap)
-        # buf = wrap.mf.read()
-        # dev.play(buffer(buf), len(buf))
+        
+        cond_filled.acquire()
+        # print(type(wrap))
+        while wrap.data == None or len(wrap.data) == 0:
+            #print("inside wait loop")
+            cond_filled.wait()
+            
+            q = 0
+        print("=======1=======")
+        print("prepare to play")
+        wrap.mf = mad.MadFile(wrap)
+        buf = wrap.mf.read()
+
+        print(type(buf))
+        print("=======2=======")
+        if buf is None:  # eof
+            continue
+        dev.play(buffer(buf), len(buf))
+        cond_filled.release()
 
 
 def main():
@@ -144,7 +199,15 @@ def main():
     # Create a TCP socket and try connecting to the server.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((sys.argv[1], int(sys.argv[2])))
+    # sock_play = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # sock_play.connect((sys.argv[1], int(sys.argv[2])))
 
+    # sock_list = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # sock_list.connect((sys.argv[1], int(sys.argv[2])))
+
+
+    
+    
     # Create a thread whose job is to receive messages from the server.
     recv_thread = threading.Thread(
         target=recv_thread_func,
@@ -152,6 +215,8 @@ def main():
     )
     recv_thread.daemon = True
     recv_thread.start()
+
+    # Create a 
 
     # Create a thread whose job is to play audio file data.
     dev = ao.AudioDevice('pulse')
@@ -170,7 +235,13 @@ def main():
 
         if ' ' in line:
             cmd, args = line.split(' ', 1)
+            try:
+                int(args)
+            except ValueError:
+                print("invalid song id")
+                continue
         else:
+
             cmd = line
 
         # TODO: Send messages to the server when the user types things.
@@ -179,7 +250,7 @@ def main():
         sock.sendall(line)
 
         # if cmd in ['l', 'list']:
-        #     print 'The user asked for list.'
+        #     print_list
 
         # if cmd in ['p', 'play']:
         #     print 'The user asked to play:', args
