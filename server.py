@@ -84,7 +84,7 @@ def send_response_to_client(client):
         if client.optional_arg == -1:
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-            
+
             client.conn.sendall(message)
             return
         # song index is invalid
@@ -92,7 +92,7 @@ def send_response_to_client(client):
         if song_index >= len(songlist):
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-            
+
             client.conn.sendall(message)
             return
         # retrieve song content and send in a series of packets
@@ -100,7 +100,7 @@ def send_response_to_client(client):
         f = open(music_dir + '/' + filename, 'rb')
         total_num_of_bytes_read = 0
         bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
-        
+
         while (len(bytes_read) > 0):
             total_num_of_bytes_read += len(bytes_read)
             payload = bytes_read
@@ -109,9 +109,8 @@ def send_response_to_client(client):
             # client interrupt by [stop]
             if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
                 break
-            
+            # print(len(message))
             client.conn.sendall(message)
-            
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         f.close()
@@ -140,7 +139,7 @@ def client_read(client):
         if ' ' in line:
             cmd, args = line.split(' ', 1)
             # store args for [play]
-            
+
             client.lock.acquire()
             try:
                 client.optional_arg = int(args)
