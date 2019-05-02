@@ -170,8 +170,6 @@ def main():
     recv_thread.daemon = True
     recv_thread.start()
 
-    # Create a 
-
     # Create a thread whose job is to play audio file data.
     dev = ao.AudioDevice('pulse')
     play_thread = threading.Thread(
