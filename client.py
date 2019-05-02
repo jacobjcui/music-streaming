@@ -27,13 +27,18 @@ STATE_NOT_PROCESSED = '0'
 STATE_PROCESSING = '1'
 STATE_DONE_PROCESSING = '2'
 
+song_playing_index = -1
+
 
 def msg_parser(data):
 
     count = 0
     status = data[1:4]
+    print(status)
     session_id = data[6:9]
+    print(session_id)
     msg_type = data[11:12]
+    print(msg_type)
     length_of_payload_str = data[14:18]
     num_start = 0
     for ch in length_of_payload_str:
@@ -42,7 +47,7 @@ def msg_parser(data):
         else:
             break
     length_of_payload = int(length_of_payload_str[num_start:])
-
+    print(length_of_payload)
     content = data[20:len(data)-1]
     return status, session_id, length_of_payload, msg_type, content
 
@@ -72,7 +77,7 @@ class mywrapper(object):
 # data needs to be added to the wrapper object.  Be sure to protect
 # the wrapper with synchronization, since the other thread is using
 # it too!
-def music_recv_thread_func(wrap, cond_filled, sock):
+def song_recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
@@ -84,11 +89,15 @@ def music_recv_thread_func(wrap, cond_filled, sock):
         # print(data[0:30])
         # count = 0
         # count_debug = 0
-        status, session_id, length_of_payload, msg_type, content = msg_parser(
+        status, song_id, length_of_payload, msg_type, content = msg_parser(
             data)
+
+        if song_id != song_playing_index:
+            continue
+
         while length_of_payload > len(data):
             print("inside loop")
-            data += sock.recv(RECV_BUFFER_SIZE)
+            data += sock.recv(4021)
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
             if wrap.data == None:
@@ -99,14 +108,13 @@ def music_recv_thread_func(wrap, cond_filled, sock):
             cond_filled.release()
         else:
             print("Wrong response for the [play] or [stop] request.")
-        
 
 
 # If there is song data stored in the wrapper object, play it!
 # Otherwise, wait until there is.  Be sure to protect your accesses
 # to the wrapper with synchronization, since the other thread is
 # using it too!
-def music_play_thread_func(wrap, cond_filled, dev):
+def song_play_thread_func(wrap, cond_filled, dev):
     while True:
         """
         TODO
@@ -116,7 +124,6 @@ def music_play_thread_func(wrap, cond_filled, dev):
         """
         cond_filled.acquire()
         while wrap.data == None or len(wrap.data) == 0:
-
             cond_filled.wait()
 
         wrap.mf = mad.MadFile(wrap)
@@ -137,7 +144,7 @@ def list_thread_func(sock):
 
         while length_of_payload > len(data):
             print("inside loop")
-            data += sock.recv(RECV_BUFFER_SIZE)
+            data += sock.recv(4021)
 
         # if msg_type == MSG_TYPE_LIST:
         print(content)
@@ -167,12 +174,12 @@ def main():
     sock_list.connect((sys.argv[1], int(sys.argv[2])))
 
     # Create a thread whose job is to receive play / stop responses from the server.
-    music_recv_thread = threading.Thread(
-        target=music_recv_thread_func,
+    song_recv_thread = threading.Thread(
+        target=song_recv_thread_func,
         args=(wrap, cond_filled, sock_play)
     )
-    music_recv_thread.daemon = True
-    music_recv_thread.start()
+    song_recv_thread.daemon = True
+    song_recv_thread.start()
 
     # Create a thread whose job is to receive list responses from the server.
     list_thread = threading.Thread(
@@ -184,12 +191,12 @@ def main():
 
     # Create a thread whose job is to play audio file data.
     dev = ao.AudioDevice('pulse')
-    music_play_thread = threading.Thread(
-        target=music_play_thread_func,
+    song_play_thread = threading.Thread(
+        target=song_play_thread_func,
         args=(wrap, cond_filled, dev)
     )
-    music_play_thread.daemon = True
-    music_play_thread.start()
+    song_play_thread.daemon = True
+    song_play_thread.start()
 
     # Enter our never-ending user I/O loop.  Because we imported the readline
     # module above, raw_input gives us nice shell-like behavior (up-arrow to
@@ -213,9 +220,13 @@ def main():
 
         if cmd in ['p', 'play']:
             sock_play.sendall(line)
+            global song_playing_index
+            song_playing_index = int(args)
+            # clear song buffer
 
         if cmd in ['s', 'stop']:
             sock_play.sendall(line)
+            # clear song buffer
 
         if cmd in ['quit', 'q', 'exit']:
             print("Bye bye!")
