@@ -32,29 +32,18 @@ STATE_DONE_PROCESSING = '2'
 # 0 when main_flag should run
 main_flag = 0
 def msg_parser(data):
-    
-    
-    # print("=====0=======\n")
-    # print(data)
+
     count = 0
-    #print(data[0:21])
-    # print("=====1=======\n")
     status = data[1:4]
-   #print("status : %s" % status)
     session_id = data[6:9]
-   # print("session id: %s" % session_id)
     msg_type = data[11:12]
-   # print("msg_type: %s" % msg_type)
     length_of_payload_str = data[14:18]
-   # print("length_of_payload_str: %s" % length_of_payload_str)
     num_start = 0
-    print(length_of_payload_str)
     for ch in length_of_payload_str:
         if ch == '0':
             num_start += 1
         else:
             break
-    print(length_of_payload_str[num_start:])
     length_of_payload = int(length_of_payload_str[num_start:])
     
 
@@ -108,10 +97,7 @@ def recv_thread_func(wrap, cond_filled, sock):
             print("inside loop")
             data += sock.recv(RECV_BUFFER_SIZE)
             
-        
-        # print(msg_type)
         if msg_type == MSG_TYPE_LIST:
-        #     print("yes")
              print(content)
         elif msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
@@ -125,13 +111,6 @@ def recv_thread_func(wrap, cond_filled, sock):
         
         
         main_flag = 0
-        
-        
-        # else:
-        #     print("not yet")
-        # global total_num_of_data
-        # total_num_of_data += len(data)
-        # print(total_num_of_data)
 
         
         
@@ -151,9 +130,8 @@ def play_thread_func(wrap, cond_filled, dev):
         """
         
         cond_filled.acquire()
-        # print(type(wrap))
         while wrap.data == None or len(wrap.data) == 0:
-            #print("inside wait loop")
+            
             cond_filled.wait()
         
         wrap.mf = mad.MadFile(wrap)

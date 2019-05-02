@@ -109,14 +109,9 @@ def send_response_to_client(client):
             # client interrupt by [stop]
             if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
                 break
-            #  
-            print(len(message))
-            # print(message[0:50])
-           
+            
             client.conn.sendall(message)
             
-            # if message[0] != '[':
-            #     print(message[0:21])
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         f.close()
