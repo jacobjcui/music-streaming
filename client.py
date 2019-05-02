@@ -31,7 +31,6 @@ song_playing_index = -1
 
 
 def msg_parser(data):
-
     count = 0
     status = data[1:4]
     session_id = data[6:9]
@@ -78,20 +77,14 @@ def song_recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
-
         data = sock.recv(4021)
-        # print("===incoming length check===")
-        # print(len(data))
-        # print("===incoming length check===")
-        # print(data[0:30])
-        # count = 0
-        # count_debug = 0
         status, song_id, length_of_payload, msg_type, content = msg_parser(
             data)
-
-        if song_id != song_playing_index:
+        song_id_int = int(song_id)
+        if song_id_int != song_playing_index:
+            print("song id is " + str(song_id) +
+                  " song plyaing index is " + str(song_playing_index))
             continue
-
         while length_of_payload > len(data):
             print("inside loop")
             data += sock.recv(RECV_BUFFER_SIZE)
@@ -101,7 +94,6 @@ def song_recv_thread_func(wrap, cond_filled, sock):
                 wrap.data = content
             else:
                 wrap.data += content
-
             cond_filled.notify()
             cond_filled.release()
         else:
@@ -123,14 +115,12 @@ def song_play_thread_func(wrap, cond_filled, dev):
         cond_filled.acquire()
         while wrap.data == None or len(wrap.data) == 0:
             cond_filled.wait()
-
         wrap.mf = mad.MadFile(wrap)
         while True:
             buf = wrap.mf.read()
             if buf is None:
                 break
             dev.play(buffer(buf), len(buf))
-
         cond_filled.release()
 
 
@@ -139,15 +129,14 @@ def list_thread_func(sock):
         data = sock.recv(4021)
         status, session_id, length_of_payload, msg_type, content = msg_parser(
             data)
-
         while length_of_payload > len(data):
             print("inside loop")
             data += sock.recv(RECV_BUFFER_SIZE)
 
-        # if msg_type == MSG_TYPE_LIST:
-        print(content)
-        # else:
-        # print("Wrong response for the [list] request.")
+        if msg_type == MSG_TYPE_LIST:
+            print(content)
+        else:
+            print("Wrong response for the [list] request.")
 
 
 def main():
