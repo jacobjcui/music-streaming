@@ -29,25 +29,18 @@ STATE_DONE_PROCESSING = '2'
 
 
 def msg_parser(data):
-    # print(data)
+
     count = 0
-    # print(data[0:21])
     status = data[1:4]
-   #print("status : %s" % status)
     session_id = data[6:9]
-   # print("session id: %s" % session_id)
     msg_type = data[11:12]
-   # print("msg_type: %s" % msg_type)
     length_of_payload_str = data[14:18]
-   # print("length_of_payload_str: %s" % length_of_payload_str)
     num_start = 0
-    print(length_of_payload_str)
     for ch in length_of_payload_str:
         if ch == '0':
             num_start += 1
         else:
             break
-    print(length_of_payload_str[num_start:])
     length_of_payload = int(length_of_payload_str[num_start:])
 
     content = data[20:len(data)-1]
@@ -83,7 +76,7 @@ def music_recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
-        cond_filled.acquire()
+
         data = sock.recv(4021)
         # print("===incoming length check===")
         # print(len(data))
@@ -120,20 +113,17 @@ def music_play_thread_func(wrap, cond_filled, dev):
         dev.play(buffer(buf), len(buf))
         """
         cond_filled.acquire()
-        # print(type(wrap))
         while wrap.data == None or len(wrap.data) == 0:
-            #print("inside wait loop")
+
             cond_filled.wait()
 
-            q = 0
-        print("prepare to play")
         wrap.mf = mad.MadFile(wrap)
-        buf = wrap.mf.read()
+        while True:
+            buf = wrap.mf.read()
+            if buf is None:
+                break
+            dev.play(buffer(buf), len(buf))
 
-        print(type(buf))
-        if buf is None:  # eof
-            continue
-        dev.play(buffer(buf), len(buf))
         cond_filled.release()
 
 
