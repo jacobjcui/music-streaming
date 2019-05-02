@@ -34,11 +34,11 @@ main_flag = 0
 def msg_parser(data):
     
     
-    print("=====0=======\n")
+    # print("=====0=======\n")
     # print(data)
     count = 0
     #print(data[0:21])
-    print("=====1=======\n")
+    # print("=====1=======\n")
     status = data[1:4]
    #print("status : %s" % status)
     session_id = data[6:9]
@@ -94,25 +94,12 @@ def recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
-        cond_filled.acquire()
+        
         data = sock.recv(4021)
-        print("===incoming length check===")
-        print(len(data))
-        print("===incoming length check===")
-        # print("data")
-        print(data[0:30])
+        
         count = 0
         count_debug = 0
-        # while count < 5:
-            
-        #     count_debug += 1
-        #     for c in data:
-        #         if c == ']':
-        #             count += 1
-        
-                
-        #data += sock.recv(RECV_BUFFER_SIZE)
-        # print(count_debug)
+   
         
         
         status, session_id, length_of_payload, msg_type, content = msg_parser(data)
@@ -127,13 +114,14 @@ def recv_thread_func(wrap, cond_filled, sock):
         #     print("yes")
              print(content)
         elif msg_type == MSG_TYPE_PLAY:
-           
+            cond_filled.acquire()
             if wrap.data == None:
                 wrap.data = content
             else:
                 wrap.data += content
-        cond_filled.notify()
-        cond_filled.release()
+            
+            cond_filled.notify()
+            cond_filled.release()
         
         
         main_flag = 0
@@ -167,18 +155,14 @@ def play_thread_func(wrap, cond_filled, dev):
         while wrap.data == None or len(wrap.data) == 0:
             #print("inside wait loop")
             cond_filled.wait()
-            
-            q = 0
-        print("=======1=======")
-        print("prepare to play")
+        
         wrap.mf = mad.MadFile(wrap)
-        buf = wrap.mf.read()
-
-        print(type(buf))
-        print("=======2=======")
-        if buf is None:  # eof
-            continue
-        dev.play(buffer(buf), len(buf))
+        while True:
+            buf = wrap.mf.read()
+            if buf is None:
+                break
+            dev.play(buffer(buf), len(buf))
+        
         cond_filled.release()
 
 
@@ -199,15 +183,7 @@ def main():
     # Create a TCP socket and try connecting to the server.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((sys.argv[1], int(sys.argv[2])))
-    # sock_play = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # sock_play.connect((sys.argv[1], int(sys.argv[2])))
 
-    # sock_list = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # sock_list.connect((sys.argv[1], int(sys.argv[2])))
-
-
-    
-    
     # Create a thread whose job is to receive messages from the server.
     recv_thread = threading.Thread(
         target=recv_thread_func,

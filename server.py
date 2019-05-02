@@ -208,6 +208,7 @@ def main():
     # open socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
     except socket.error as err:
         print "socket creation failed with error %s" % (err)
 
