@@ -136,8 +136,8 @@ def send_response_to_client(client):
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
 
-        print("Done sending all stream packets for Song " +
-              str(client.optional_arg) + "!")
+        print("[Client {0}] Done sending all stream packets for Song {1}!".format(
+            client.session_id, client.optional_arg))
         f.close()
         client.lock.acquire()
         try:
