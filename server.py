@@ -44,7 +44,7 @@ class Client:
         self.alive = True
         self.state = STATE_INIT
         self.count_of_play = 0
-        print("Client {0} is connected".format(self.session_id))
+        print("Client {0} Connects in".format(self.session_id))
 
 
 # Thread that sends music and lists to the client.  All send() calls
@@ -78,7 +78,6 @@ def send_response_to_client(client):
         payload = songs
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
-        print(message)
         client.conn.sendall(message)
         client.lock.acquire()
         try:
@@ -109,7 +108,6 @@ def send_response_to_client(client):
         bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         count_read = 0
 
-        packet_amount = 0
         while (len(bytes_read) > 0):
             count_read += 1
             total_num_of_bytes_read += len(bytes_read)
@@ -118,7 +116,7 @@ def send_response_to_client(client):
                 MSG_STATUS_SUCCESS, client.count_of_play, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
             if not client.alive:
-                print("client not alive")
+                print("[Client {0}] Not alive".format(client.session_id))
                 break
             if client.state == STATE_STOP:
                 print("[Client {0}] Stops streaming due to [stop] command in write thread".format(
@@ -136,18 +134,9 @@ def send_response_to_client(client):
                     client.lock.release()
                 return
 
-            # print("client state = " + str(client.state))
-            #print(len(message))
-            packet_amount += 1
-            print("[Client {0}] sends packet number {1}".format(
-                    client.session_id, packet_amount))
             client.conn.sendall(message)
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
-        print("==========6============")
-        print(total_num_of_bytes_read)
-        print(count_read)
-        print("==========7============")
         print("[Client {0}] Done sending all stream packets for Song {1}!".format(
             client.session_id, client.optional_arg))
         f.close()
@@ -162,7 +151,6 @@ def send_response_to_client(client):
         message = "[%s][%03d][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.count_of_play, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
-        print("stop " + message)
         client.lock.acquire()
         try:
             client.state = STATE_STOP_DONE
@@ -234,6 +222,7 @@ def get_mp3s(musicdir):
     global music_dir
     music_dir = musicdir
     songs_temp = []
+    songs_temp.append("\n")
     for filename in os.listdir(musicdir):
         if not filename.endswith(".mp3"):
             continue
@@ -243,8 +232,9 @@ def get_mp3s(musicdir):
         # store song name and index in "songlist"
         songs_temp.append("{0}. {1}\n".format(len(songlist), filename[:-4]))
         songlist.append("{0}".format(filename[:-4]))
+    # songs_temp.append(">> ")
     songs = "".join(songs_temp)
-    songs = songs[:-1]
+    # songs = songs[:-1]
     print("Found {0} song(s)!".format(len(songlist)))
     return [songs, songlist]
 
@@ -267,7 +257,7 @@ def main():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
     except socket.error as err:
-        print "socket creation failed with error %s" % (err)
+        print "Socket creation failed with error %s" % (err)
 
     # bind server port to socket
     s.bind(('', port))
@@ -276,9 +266,6 @@ def main():
     while True:
         client_conn, client_addr = s.accept()
         client = Client(client_conn, client_addr, session_id)
-        print(client.session_id)
-        print(client_conn)
-        print(client_addr)
         session_id += 1
         t = Thread(target=client_read, args=(client,))
         threads.append(t)
@@ -286,7 +273,6 @@ def main():
         t = Thread(target=client_write, args=(client,))
         threads.append(t)
         t.start()
-        print("here")
 
     s.close()
 
