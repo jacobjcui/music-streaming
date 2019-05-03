@@ -9,6 +9,8 @@ import sys
 import threading
 from threading import Lock, Thread
 from time import sleep
+import time
+import random
 
 
 total_num_of_data = 0
@@ -38,14 +40,19 @@ count_recv = 0
 # increment when command is [play] or [stop]
 count_of_play = 0
 count_of_packet_for_curr_count_of_play = 0
+
+
 def clear_play_buffer(cond_filled, wrap):
-    
+    then = time.time()
     # print("in main " + str(stop_flag))
     cond_filled.acquire()
     wrap.data = ''
     wrap.mf = mad.MadFile(wrap)
     cond_filled.notify()
     cond_filled.release()
+    now = time.time()
+    print("It took: ", now-then, " seconds to clear the buffer\n")
+
 
 def msg_parser(data):
     count = 0
@@ -103,7 +110,7 @@ def song_recv_thread_func(wrap, cond_filled, sock):
 
         data = sock.recv(4021)
         # print(len(data))
-        
+
         length_of_payload_str = ''
         if data[0:5] == '[200]':
             length_of_payload_str = data[14:18]
@@ -138,28 +145,25 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         if number_of_songs_played_int != count_of_play:
             continue
 
+        if stop_flag:
+            continue
+
         #print("Received Packet {0} for count of play {1}".format(count_of_packet_for_curr_count_of_play, count_of_play))
 
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
-            if not stop_flag:
-                if wrap.data == None:
-                    wrap.data = content
-                else:
-                    wrap.data += content
+            # if not stop_flag:
+            if wrap.data == None:
+                wrap.data = content
             else:
-                 wrap.data = ''
-                 wrap.mf = mad.MadFile(wrap)
+                wrap.data += content
+            # else:
+            #     wrap.data = ''
+            #     wrap.mf = mad.MadFile(wrap)
             cond_filled.notify()
             cond_filled.release()
         elif msg_type == MSG_TYPE_STOP:
-
-            cond_filled.acquire()
-            wrap.data = ''
-            wrap.mf = mad.MadFile(wrap)
-
-            cond_filled.notify()
-            cond_filled.release()
+            a = 1
         else:
             print("Wrong response for the [play] or [stop] request.")
 
@@ -170,27 +174,17 @@ def song_recv_thread_func(wrap, cond_filled, sock):
 # using it too!
 def song_play_thread_func(wrap, cond_filled, dev):
     while True:
-        """
-        TODO
-        example usage of dev and wrap (see mp3-example.py for a full example):
-        buf = wrap.mf.read()
-        dev.play(buffer(buf), len(buf))
-        """
+        if (len(wrap.data) == 0):
+            continue
 
-        cond_filled.acquire()
-        while wrap.data == None or len(wrap.data) == 0:
-            
-            cond_filled.wait()
         wrap.mf = mad.MadFile(wrap)
         while True:
-
             buf = wrap.mf.read()
             if stop_flag:
                 buf = None
             if buf is None:
                 break
             dev.play(buffer(buf), len(buf))
-        cond_filled.release()
 
 
 def list_thread_func(sock):
@@ -205,27 +199,6 @@ def list_thread_func(sock):
             print(content)
         else:
             print("Wrong response for the [list] request.")
-
-
-def stop_thread_func(sock):
-    while True:
-        # print("we should stop here")
-
-        data = sock.recv(4021)
-        status, session_id, length_of_payload, msg_type, content = msg_parser(
-            data)
-        while length_of_payload > len(data):
-            data += sock.recv(4021)
-
-        if msg_type == MSG_TYPE_STOP:
-            cond_filled.acquire()
-
-            wrap.data = ''
-            wrap.mf = mad.MadFile(wrap)
-            cond_filled.notify()
-            cond_filled.release()
-        else:
-            print("Wrong response for the [s, stop] request.")
 
 
 def main():
@@ -250,7 +223,7 @@ def main():
     sock_play.connect((sys.argv[1], int(sys.argv[2])))
     sock_list = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_list.connect((sys.argv[1], int(sys.argv[2])))
-   
+
     # Create a thread whose job is to receive play / stop responses from the server.
     song_recv_thread = threading.Thread(
         target=song_recv_thread_func,
@@ -307,40 +280,36 @@ def main():
         if cmd in ['p', 'play']:
             cmd = 'play'
             line = 'play' + ' ' + args
-            #stop_lock.acquire()
+            # stop_lock.acquire()
             stop_flag = False
-            #stop_lock.release()
+            # stop_lock.release()
             clear_play_buffer(cond_filled, wrap)
             sock_play.sendall(line)
             global song_playing_index
 
             song_playing_index = int(args)
             # clear song buffer
-            #count_of_play_lock.acquire()
+            # count_of_play_lock.acquire()
             count_of_play += 1
             count_of_packet_for_curr_count_of_play = 0
-            #count_of_play_lock.release() 
+            # count_of_play_lock.release()
 
         if cmd in ['s', 'stop']:
             cmd = 'stop'
             line = 'stop'
-            #stop_lock.acquire()
+            # stop_lock.acquire()
 
             stop_flag = True
-            #stop_lock.release()
+            # stop_lock.release()
             # print("in main " + str(stop_flag))
-            cond_filled.acquire()
-            wrap.data = ''
-            wrap.mf = mad.MadFile(wrap)
-            cond_filled.notify()
-            cond_filled.release()
+            clear_play_buffer(cond_filled, wrap)
 
             sock_play.sendall(line)
             # clear song buffer
-            #count_of_play_lock.acquire()
+            # count_of_play_lock.acquire()
             count_of_play += 1
             count_of_packet_for_curr_count_of_play = 0
-            #count_of_play_lock.release()
+            # count_of_play_lock.release()
         if cmd in ['quit', 'q', 'exit']:
             print("Bye bye!")
             sys.exit(0)
