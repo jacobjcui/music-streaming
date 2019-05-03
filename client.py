@@ -99,6 +99,7 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
 
+       
         data = sock.recv(RECV_BUFFER_SIZE)
 
         length_of_payload_str = ''
@@ -156,10 +157,14 @@ def song_play_thread_func(wrap, cond_filled, dev):
     while True:
         if (len(wrap.data) == 0):
             continue
-
+        
+        cond_filled.acquire()
         wrap.mf = mad.MadFile(wrap)
+        cond_filled.release()
         while True:
+            cond_filled.acquire()
             buf = wrap.mf.read()
+            cond_filled.release()
             if stop_flag:
                 buf = None
             if buf is None:
@@ -169,7 +174,9 @@ def song_play_thread_func(wrap, cond_filled, dev):
 
 def list_thread_func(sock):
     while True:
-        data = sock.recv()
+        
+        data = sock.recv(RECV_BUFFER_SIZE)
+        
         status, session_id, length_of_payload, msg_type, content = msg_parser(
             data)
         while length_of_payload > len(data):
