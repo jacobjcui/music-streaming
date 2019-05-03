@@ -106,14 +106,16 @@ def send_response_to_client(client):
         f = open(music_dir + '/' + filename, 'rb')
         total_num_of_bytes_read = 0
         bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
-
+        count_read = 0
         while (len(bytes_read) > 0):
+            count_read += 1
             total_num_of_bytes_read += len(bytes_read)
             payload = bytes_read
             message = "[%s][%03d][%s][%04d][%s]" % (
                 MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
             if not client.alive:
+                print("client not alive")
                 break
             if client.state == STATE_STOP:
                 print("[Client {0}] Stops streaming due to [stop] command in write thread".format(
@@ -132,10 +134,14 @@ def send_response_to_client(client):
                 return
 
             # print("client state = " + str(client.state))
+            #print(len(message))
             client.conn.sendall(message)
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
-
+        print("==========6============")
+        print(total_num_of_bytes_read)
+        print(count_read)
+        print("==========7============")
         print("[Client {0}] Done sending all stream packets for Song {1}!".format(
             client.session_id, client.optional_arg))
         f.close()
@@ -150,6 +156,7 @@ def send_response_to_client(client):
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
+        print("stop " + message)
         client.lock.acquire()
         try:
             client.state = STATE_STOP_DONE

@@ -126,14 +126,14 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
-            # if not stop_flag:
-            if wrap.data == None:
-                wrap.data = content
+            if not stop_flag:
+                if wrap.data == None:
+                    wrap.data = content
+                else:
+                    wrap.data += content
             else:
-                wrap.data += content
-            # else:
-            #      wrap.data = ''
-            #      wrap.mf = mad.MadFile(wrap)
+                 wrap.data = ''
+                 wrap.mf = mad.MadFile(wrap)
             cond_filled.notify()
             cond_filled.release()
         elif msg_type == MSG_TYPE_STOP:
@@ -163,7 +163,7 @@ def song_play_thread_func(wrap, cond_filled, dev):
 
         cond_filled.acquire()
         while wrap.data == None or len(wrap.data) == 0:
-            # if stop_flag:
+            
             cond_filled.wait()
         wrap.mf = mad.MadFile(wrap)
         while True:
@@ -183,13 +183,10 @@ def list_thread_func(sock):
         status, session_id, length_of_payload, msg_type, content = msg_parser(
             data)
         while length_of_payload > len(data):
-            print("inside loop")
             data += sock.recv(4021)
 
         if msg_type == MSG_TYPE_LIST:
             print(content)
-            if stop_flag:
-                print("should have stop here")
         else:
             print("Wrong response for the [list] request.")
 
@@ -209,7 +206,6 @@ def stop_thread_func(sock):
             
             wrap.data = ''
             wrap.mf = mad.MadFile(wrap)
-            #print("we should stop here")
             cond_filled.notify()
             cond_filled.release()
         else:
@@ -237,9 +233,7 @@ def main():
     sock_play.connect((sys.argv[1], int(sys.argv[2])))
     sock_list = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_list.connect((sys.argv[1], int(sys.argv[2])))
-    # sock_stop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # sock_stop.connect((sys.argv[1], int(sys.argv[2])))
-
+   
     # Create a thread whose job is to receive play / stop responses from the server.
     song_recv_thread = threading.Thread(
         target=song_recv_thread_func,
@@ -255,13 +249,6 @@ def main():
     )
     list_thread.daemon = True
     list_thread.start()
-
-    # stop_thread = threading.Thread(
-    #     target=stop_thread_func,
-    #     args=(sock_stop,)
-    # )
-    # stop_thread.daemon = True
-    # stop_thread.start()
 
     # Create a thread whose job is to play audio file data.
     dev = ao.AudioDevice('pulse')
@@ -316,12 +303,11 @@ def main():
             
             stop_flag = True
             stop_lock.release()
-            # print("in main " + str(stop_flag))
-            cond_filled.acquire()
-            wrap.data = ''
-            wrap.mf = mad.MadFile(wrap)
-            cond_filled.notify()
-            cond_filled.release()
+            # cond_filled.acquire()
+            # wrap.data = ''
+            # wrap.mf = mad.MadFile(wrap)
+            # cond_filled.notify()
+            # cond_filled.release()
             
            
             sock_play.sendall(line)
