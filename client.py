@@ -82,8 +82,7 @@ def song_recv_thread_func(wrap, cond_filled, sock):
             data)
         song_id_int = int(song_id)
         if song_id_int != song_playing_index:
-            print("song id is " + str(song_id) +
-                  " song streamed index is " + str(song_playing_index))
+            # print("song id is " + str(song_id) + " song streamed index is " + str(song_playing_index))
             continue
         while length_of_payload > len(data):
             print("inside loop")
