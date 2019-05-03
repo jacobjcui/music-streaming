@@ -72,6 +72,8 @@ def client_write(client):
 def send_response_to_client(client):
     message = ""
     payload = ""
+    print("client cmd: " + client.cmd)
+    print("len of cmd: " + str(len(client.cmd)))
     if client.cmd == "list":
         payload = songs
         message = "[%s][%s][%s][%04d][%s]" % (
@@ -114,10 +116,15 @@ def send_response_to_client(client):
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         f.close()
+     
     elif client.cmd == "stop":
+        print("====STOP====")
+        print(message)
+        print("====STOP====")
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
+       
     else:
         print("Invalid command [{0}] from Client {1}".format(
             client.cmd, client.session_id))
@@ -154,6 +161,7 @@ def client_read(client):
         client.lock.acquire()
         try:
             client.cmd = cmd
+            print("client command " + client.cmd)
             client.state = STATE_NOT_PROCESSED
         finally:
             client.lock.release()
