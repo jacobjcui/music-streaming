@@ -119,7 +119,8 @@ def send_response_to_client(client):
                 f.close()
                 return
             if client.state == STATE_PLAY_ANOTHER:
-                print("Request to stream another song: " + client.optional_arg)
+                print("Request to stream another song: " +
+                      str(client.optional_arg))
                 f.close()
                 client.lock.acquire()
                 try:
