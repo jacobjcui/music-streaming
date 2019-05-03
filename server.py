@@ -18,11 +18,19 @@ MSG_TYPE_LIST = '0'
 MSG_TYPE_PLAY = '1'
 MSG_TYPE_STOP = '2'
 
-STATE_NOT_PROCESSED = 0
-STATE_PROCESSING = 1
-STATE_DONE_PROCESSING = 2
-STATE_STOPPED = 3
-STATE_STOP_DONE_PROCESSING = 4
+# STATE_NOT_PROCESSED = 0
+# STATE_PROCESSING = 1
+# STATE_DONE_PROCESSING = 2
+# STATE_STOPPED = 3
+# STATE_STOP_DONE_PROCESSING = 4
+STATE_INIT = 0
+STATE_LIST = 1
+STATE_LIST_DONE = 2
+STATE_PLAY = 3
+STATE_PLAY_DONE = 4
+STATE_PLAY_ANOTHER = 5
+STATE_STOP = 6
+STATE_STOP_DONE = 7
 
 songs = ""
 songlist = []
@@ -39,7 +47,7 @@ class Client:
         self.cmd = ""
         self.optional_arg = -1
         self.alive = True
-        self.state = STATE_NOT_PROCESSED
+        self.state = STATE_INIT
         print("Client {0} is connected".format(self.session_id))
 
 
@@ -55,30 +63,15 @@ def client_write(client):
             print("Closes connection with Client {0}".format(
                 client.session_id))
             break
-        if client.cmd in ["stop", "s", "play", "p"]:
-            print(client.session_id + " in client write:" + client.cmd)
         # busy loop when the client first connects in with no cmd
-        if client.cmd == "":
+        if client.state == STATE_INIT:
             continue
-        # busy loop when the client has already processed the last cmd
-        if client.state == STATE_DONE_PROCESSING:
-            if client.cmd not in ["list", "l"]:
-                print("done processing")
+        elif client.state == STATE_PLAY_DONE or client.state == STATE_STOP_DONE or client.state == STATE_LIST_DONE:
             continue
-        # if client.cmd in ["play", "p"]:
-        #     client.state = STATE_PROCESSING
-        send_response_to_client(client)
-        if client.state == STATE_DONE_PROCESSING:
-            continue
-        # set client state
-        client.lock.acquire()
-        try:
-            if client.cmd in ["stop", "s"]:
-                client.state = STATE_NOT_PROCESSED
-            else:
-                client.state = STATE_DONE_PROCESSING
-        finally:
-            client.lock.release()
+        else:
+            send_response_to_client(client)
+            if client.state == STATE_PLAY_DONE or client.state == STATE_STOP_DONE or client.state == STATE_LIST_DONE:
+                continue
     client.conn.close()
 
 
@@ -91,12 +84,17 @@ def send_response_to_client(client):
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
         print(message)
         client.conn.sendall(message)
+        client.lock.acquire()
+        try:
+            client.state = STATE_LIST_DONE
+        finally:
+            client.lock.release()
     elif client.cmd in ["play", "p"]:
+        print("will send play msg")
         # song index does not exist
         if client.optional_arg == -1:
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-
             client.conn.sendall(message)
             return
         # song index is invalid
@@ -108,11 +106,6 @@ def send_response_to_client(client):
             client.conn.sendall(message)
             return
         # retrieve song content and send in a series of packets
-        client.lock.acquire()
-        try:
-            client.state = STATE_PROCESSING
-        finally:
-            client.lock.release()
         filename = songlist[song_index] + '.mp3'
         f = open(music_dir + '/' + filename, 'rb')
         total_num_of_bytes_read = 0
@@ -124,32 +117,47 @@ def send_response_to_client(client):
             message = "[%s][%03d][%s][%04d][%s]" % (
                 MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
-            if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
+            if not client.alive:
                 break
-            if client.state == STATE_STOPPED:
+            if client.state == STATE_STOP:
                 print("Encounter state stop while sending streams")
-                break
+                f.close()
+                return
+            if client.state == STATE_PLAY_ANOTHER:
+                print("Request to stream another song: " + client.optional_arg)
+                f.close()
+                client.lock.acquire()
+                try:
+                    client.state = STATE_PLAY
+                finally:
+                    client.lock.release()
+                return
+
             # print("client state = " + str(client.state))
             client.conn.sendall(message)
-            print("sending stream packets...")
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
+
+        print("Done sending all stream packets for Song " +
+              str(client.optional_arg) + "!")
         f.close()
+        client.lock.acquire()
+        try:
+            client.state = STATE_PLAY_DONE
+        finally:
+            client.lock.release()
     elif client.cmd in ["stop", "s"]:
+        print("will send stop msg")
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
         client.lock.acquire()
         try:
-            client.state = STATE_DONE_PROCESSING
+            client.state = STATE_STOP_DONE
         finally:
             client.lock.release()
     else:
-        print("Invalid command [{0}] from Client {1}".format(
-            client.cmd, client.session_id))
-        message = "[%s][%s][%s][%04d][%s]" % (
-            MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_STOP, len(payload), payload)
-        client.conn.sendall(message)
+        print("Should not reach here. [2]")
 
 
 # Thread that receives commands from the client.  All recv() calls should
@@ -176,14 +184,21 @@ def client_read(client):
         # set client state
         client.lock.acquire()
         try:
-            client.cmd = cmd
-            client.state = STATE_NOT_PROCESSED
-            if client.cmd in ["play", "p"]:
+            if cmd in ["play", "p"]:
+                # at this moment client is streaming [play] packets
+                if client.state == STATE_PLAY:
+                    client.state = STATE_PLAY_ANOTHER
+                else:
+                    client.state = STATE_PLAY
                 client.optional_arg = int(args)
-            if client.cmd in ["stop", "s"]:
+            elif cmd in ["stop", "s"]:
                 print("set client state to stopped")
-                client.state = STATE_STOPPED
-                print("client state ====" + str(client.cmd))
+                client.state = STATE_STOP
+            elif cmd in ["list", "l"]:
+                client.state = STATE_LIST
+            else:
+                print("Should not reach here. [1]")
+            client.cmd = cmd
         finally:
             client.lock.release()
     print("Client {0} disconnects".format(client.session_id))
