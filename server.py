@@ -75,7 +75,6 @@ def client_write(client):
 def send_response_to_client(client):
     message = ""
     payload = ""
-    print("in send response " + str(client.cmd))
     if client.cmd == "list":
         payload = songs
         message = "[%s][%s][%s][%04d][%s]" % (
@@ -113,8 +112,7 @@ def send_response_to_client(client):
             # client interrupt by [stop]
             if (not client.alive) or (client.state == STATE_DONE_PROCESSING) or (client.state == STATE_STOPPED):
                 break
-            # print(len(message))
-            print("client state = " + str(client.state))
+            # print("client state = " + str(client.state))
             client.conn.sendall(message)
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
