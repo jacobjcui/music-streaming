@@ -29,7 +29,7 @@ STATE_PROCESSING = '1'
 STATE_DONE_PROCESSING = '2'
 
 song_playing_index = -1
-stop_flag = False
+
 stop_lock = Lock()
 count_recv = 0
 
@@ -83,15 +83,36 @@ class mywrapper(object):
 # it too!
 def song_recv_thread_func(wrap, cond_filled, sock):
     while True:
+       
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
-        if stop_flag:
-            cond_filled.acquire()
-            print("in the stop flag")
-            wrap.data = ''
-            cond_filled.release()
-            continue
+       
+
         data = sock.recv(4021)
+        # print(len(data))
+        length_of_payload_str = ''
+        if data[0:5] == '[200]':
+            length_of_payload_str = data[14:18]
+            num_start = 0
+            for ch in length_of_payload_str:
+                if ch == '0':
+                    num_start += 1
+                else:
+                    break
+            if num_start == len(length_of_payload_str):
+                num_start -= 1
+        else:
+            #print(data[0:5])
+            continue
+        length_of_payload = 0
+        if length_of_payload_str != '':
+            length_of_payload = int(length_of_payload_str[num_start:])
+    
+        while len(data) < length_of_payload:
+            data += sock.recv(1)
+            
+        
+        
         global count_recv
         count_recv += 1
         
@@ -99,30 +120,28 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         status, song_id, length_of_payload, msg_type, content = msg_parser(
             data)
         song_id_int = int(song_id)
-        # print("msg_type " + msg_type)
-        if msg_type == MSG_TYPE_STOP:
-            print(count_recv)
-            print("msg_type " + msg_type)
+    
         if msg_type != MSG_TYPE_STOP and song_id_int != song_playing_index:
-            # print("song id is " + str(song_id) +
-            #       " song plyaing index is " + str(song_playing_index))
             continue
-        # while length_of_payload > len(data):
-        #     #print("inside loop")
-        #     data += sock.recv(4021)
+        
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
+            # if not stop_flag:
             if wrap.data == None:
                 wrap.data = content
             else:
                 wrap.data += content
+            # else:
+            #      wrap.data = ''
+            #      wrap.mf = mad.MadFile(wrap)
             cond_filled.notify()
             cond_filled.release()
         elif msg_type == MSG_TYPE_STOP:
-            print("we should stop here")
+            
             cond_filled.acquire()
             wrap.data = ''
-            print("we should stop here")
+            wrap.mf = mad.MadFile(wrap)
+            
             cond_filled.notify()
             cond_filled.release()
         else:
@@ -141,16 +160,17 @@ def song_play_thread_func(wrap, cond_filled, dev):
         buf = wrap.mf.read()
         dev.play(buffer(buf), len(buf))
         """
+
         cond_filled.acquire()
         while wrap.data == None or len(wrap.data) == 0:
+            # if stop_flag:
             cond_filled.wait()
         wrap.mf = mad.MadFile(wrap)
         while True:
-            if stop_flag:
-                print("====In the loop and stop=====")
-                wrap.data = ''
-                break
+            
             buf = wrap.mf.read()
+            if stop_flag:
+                buf = None
             if buf is None:
                 break
             dev.play(buffer(buf), len(buf))
@@ -168,9 +188,32 @@ def list_thread_func(sock):
 
         if msg_type == MSG_TYPE_LIST:
             print(content)
+            if stop_flag:
+                print("should have stop here")
         else:
             print("Wrong response for the [list] request.")
 
+def stop_thread_func(sock):
+    while True:
+        # print("we should stop here")
+        
+
+        data = sock.recv(4021)
+        status, session_id, length_of_payload, msg_type, content = msg_parser(
+            data)
+        while length_of_payload > len(data):
+            data += sock.recv(4021)
+
+        if msg_type == MSG_TYPE_STOP:
+            cond_filled.acquire()
+            
+            wrap.data = ''
+            wrap.mf = mad.MadFile(wrap)
+            #print("we should stop here")
+            cond_filled.notify()
+            cond_filled.release()
+        else:
+            print("Wrong response for the [s, stop] request.")
 
 def main():
     if len(sys.argv) < 3:
@@ -186,12 +229,16 @@ def main():
     # See: https://docs.python.org/2/library/threading.html#condition-objects
     cond_filled = threading.Condition()
 
+    global stop_flag 
+    stop_flag = False
     # Create 2 TCP sockets and try connecting to the server.
     # One for play/stop, and the other for list.
     sock_play = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_play.connect((sys.argv[1], int(sys.argv[2])))
     sock_list = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_list.connect((sys.argv[1], int(sys.argv[2])))
+    # sock_stop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # sock_stop.connect((sys.argv[1], int(sys.argv[2])))
 
     # Create a thread whose job is to receive play / stop responses from the server.
     song_recv_thread = threading.Thread(
@@ -209,6 +256,13 @@ def main():
     list_thread.daemon = True
     list_thread.start()
 
+    # stop_thread = threading.Thread(
+    #     target=stop_thread_func,
+    #     args=(sock_stop,)
+    # )
+    # stop_thread.daemon = True
+    # stop_thread.start()
+
     # Create a thread whose job is to play audio file data.
     dev = ao.AudioDevice('pulse')
     song_play_thread = threading.Thread(
@@ -221,6 +275,8 @@ def main():
     # Enter our never-ending user I/O loop.  Because we imported the readline
     # module above, raw_input gives us nice shell-like behavior (up-arrow to
     # go backwards, etc.).
+
+    
     while True:
         line = raw_input('>> ')
 
@@ -243,6 +299,9 @@ def main():
         if cmd in ['p', 'play']:
             cmd = 'play'
             line = 'play' + ' ' + args
+            stop_lock.acquire()
+            stop_flag = False
+            stop_lock.release()
             sock_play.sendall(line)
             global song_playing_index
            
@@ -254,14 +313,17 @@ def main():
             cmd = 'stop'
             line = 'stop'
             stop_lock.acquire()
-            try:
-                stop_flag = True
-                cond_filled.acquire()
-                wrap.data = ''
-                cond_filled.notify()
-                cond_filled.release()
-            finally:
-                stop_lock.release()
+            
+            stop_flag = True
+            stop_lock.release()
+            # print("in main " + str(stop_flag))
+            cond_filled.acquire()
+            wrap.data = ''
+            wrap.mf = mad.MadFile(wrap)
+            cond_filled.notify()
+            cond_filled.release()
+            
+           
             sock_play.sendall(line)
             # clear song buffer
 

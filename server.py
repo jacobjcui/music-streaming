@@ -55,7 +55,7 @@ def client_write(client):
     while True:
         # close connection is the client disconnects
         if client.alive == False:
-            print("Closes connection with Client {0}".format(
+            print("[Client {0}] Closes connection".format(
                 client.session_id))
             break
         # busy loop when the client first connects in with no cmd
@@ -85,7 +85,8 @@ def send_response_to_client(client):
         finally:
             client.lock.release()
     elif client.cmd in ["play", "p"]:
-        print("will send play msg")
+        print("[Client {0}] Will send play {1} msg in write thread".format(
+            client.session_id, client.optional_arg))
         # song index does not exist
         if client.optional_arg == -1:
             message = "[%s][%s][%s][%04d][%s]" % (
@@ -115,12 +116,13 @@ def send_response_to_client(client):
             if not client.alive:
                 break
             if client.state == STATE_STOP:
-                print("Encounter state stop while sending streams")
+                print("[Client {0}] Stops streaming due to [stop] command in write thread".format(
+                    client.session_id))
                 f.close()
                 return
             if client.state == STATE_PLAY_ANOTHER:
-                print("Request to stream another song: " +
-                      str(client.optional_arg))
+                print("[Client {0}] Requests to play another song: {1} in write thread".format(
+                    client.session_id, client.optional_arg))
                 f.close()
                 client.lock.acquire()
                 try:
@@ -134,8 +136,8 @@ def send_response_to_client(client):
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
 
-        print("Done sending all stream packets for Song " +
-              str(client.optional_arg) + "!")
+        print("[Client {0}] Done sending all stream packets for Song {1}!".format(
+            client.session_id, client.optional_arg))
         f.close()
         client.lock.acquire()
         try:
@@ -143,7 +145,8 @@ def send_response_to_client(client):
         finally:
             client.lock.release()
     elif client.cmd in ["stop", "s"]:
-        print("will send stop msg")
+        print("[Client {0}] Will send stop msg in write thread".format(
+            client.session_id))
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
@@ -153,7 +156,8 @@ def send_response_to_client(client):
         finally:
             client.lock.release()
     else:
-        print("Should not reach here. [2]")
+        print("[Client {0}] Should not reach here [2]".format(
+            client.session_id))
 
 
 # Thread that receives commands from the client.  All recv() calls should
@@ -161,7 +165,7 @@ def send_response_to_client(client):
 def client_read(client):
     while True:
         line = client.conn.recv(RECV_BUFFER_SIZE)
-        print("Client {0} requests [{1}]".format(client.session_id, line))
+        print("[Client {0}] Requests [{1}]".format(client.session_id, line))
         if not line or line.decode('utf-8') == 'quit':
             client.lock.acquire()
             try:
@@ -181,19 +185,23 @@ def client_read(client):
         client.lock.acquire()
         try:
             if cmd in ["play", "p"]:
+                client.optional_arg = int(args)
                 # at this moment client is streaming [play] packets
                 if client.state == STATE_PLAY:
                     client.state = STATE_PLAY_ANOTHER
+                    print("[Client {0}] Requests to play another song: {1} in read thread".format(
+                        client.session_id, client.optional_arg))
                 else:
                     client.state = STATE_PLAY
-                client.optional_arg = int(args)
             elif cmd in ["stop", "s"]:
-                print("set client state to stopped")
+                print("[Client {0}] Requests to stop in read thread".format(
+                    client.session_id))
                 client.state = STATE_STOP
             elif cmd in ["list", "l"]:
                 client.state = STATE_LIST
             else:
-                print("Should not reach here. [1]")
+                print("[Client {0}] Should not reach here. [1]".format(
+                    client.session_id))
             client.cmd = cmd
         finally:
             client.lock.release()
