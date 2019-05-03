@@ -226,6 +226,9 @@ def main():
     while True:
         client_conn, client_addr = s.accept()
         client = Client(client_conn, client_addr, session_id)
+        print(client.session_id)
+        print(client_conn)
+        print(client_addr)
         session_id += 1
         t = Thread(target=client_read, args=(client,))
         threads.append(t)
@@ -233,6 +236,7 @@ def main():
         t = Thread(target=client_write, args=(client,))
         threads.append(t)
         t.start()
+        print("here")
 
     s.close()
 

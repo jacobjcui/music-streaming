@@ -7,6 +7,7 @@ import socket
 import struct
 import sys
 import threading
+from threading import Lock, Thread
 from time import sleep
 
 
@@ -29,6 +30,7 @@ STATE_DONE_PROCESSING = '2'
 
 song_playing_index = -1
 stop_flag = False
+stop_lock = Lock()
 count_recv = 0
 
 def msg_parser(data):
@@ -83,6 +85,10 @@ def song_recv_thread_func(wrap, cond_filled, sock):
     while True:
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
+        if stop_flag:
+            print("in the stop flag")
+            wrap.data = ''
+            continue
         data = sock.recv(4021)
         global count_recv
         count_recv += 1
@@ -99,9 +105,9 @@ def song_recv_thread_func(wrap, cond_filled, sock):
             # print("song id is " + str(song_id) +
             #       " song plyaing index is " + str(song_playing_index))
             continue
-        while length_of_payload > len(data):
-            #print("inside loop")
-            data += sock.recv(4021)
+        # while length_of_payload > len(data):
+        #     #print("inside loop")
+        #     data += sock.recv(4021)
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
             if wrap.data == None:
@@ -112,9 +118,8 @@ def song_recv_thread_func(wrap, cond_filled, sock):
             cond_filled.release()
         elif msg_type == MSG_TYPE_STOP:
             print("we should stop here")
-            stop_flag = True
             cond_filled.acquire()
-            wrap.data = None
+            wrap.data = ''
             print("we should stop here")
             cond_filled.notify()
             cond_filled.release()
@@ -245,6 +250,15 @@ def main():
         if cmd in ['s', 'stop']:
             cmd = 'stop'
             line = 'stop'
+            stop_lock.acquire()
+            try:
+                stop_flag = True
+                cond_filled.acquire()
+                wrap.data = ''
+                cond_filled.notify()
+                cond_filled.release()
+            finally:
+                stop_lock.release()
             sock_play.sendall(line)
             # clear song buffer
 
