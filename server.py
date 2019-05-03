@@ -21,6 +21,7 @@ MSG_TYPE_STOP = '2'
 STATE_NOT_PROCESSED = 0
 STATE_PROCESSING = 1
 STATE_DONE_PROCESSING = 2
+STATE_STOPPED = 3
 
 songs = ""
 songlist = []
@@ -59,6 +60,8 @@ def client_write(client):
         # busy loop when the client has already processed the last cmd
         if client.state == STATE_DONE_PROCESSING:
             continue
+        if client.cmd in ["play", "p"]:
+            client.state = STATE_PROCESSING
         send_response_to_client(client)
         # set client state
         client.lock.acquire()
@@ -109,9 +112,9 @@ def send_response_to_client(client):
             message = "[%s][%03d][%s][%04d][%s]" % (
                 MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
-            if (not client.alive) or (client.state == STATE_DONE_PROCESSING):
+            if (not client.alive) or (client.state == STATE_DONE_PROCESSING) or (client.state == STATE_STOPPED):
                 break
-            # print(len(message))
+            # print("client state = " + str(client.state))
             client.conn.sendall(message)
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
@@ -157,19 +160,21 @@ def client_read(client):
         # if the cmd is not valid, then go to next round
         if not is_valid_command(cmd):
             continue
-        # set client status
+        # set client state
         client.lock.acquire()
         try:
             client.cmd = cmd
             print("client command " + client.cmd)
             client.state = STATE_NOT_PROCESSED
+            if cmd in ["stop", "s"]:
+                client.state = STATE_STOPPED
         finally:
             client.lock.release()
     print("Client {0} disconnects".format(client.session_id))
 
 
 def is_valid_command(cmd):
-    if cmd == "list" or cmd == "play" or cmd == "stop":
+    if cmd in ["list", "l", "play", "p", "stop", "s"]:
         return True
     return False
 
