@@ -43,6 +43,7 @@ class Client:
         self.optional_arg = -1
         self.alive = True
         self.state = STATE_INIT
+        self.count_of_play = 0
         print("Client {0} is connected".format(self.session_id))
 
 
@@ -107,12 +108,14 @@ def send_response_to_client(client):
         total_num_of_bytes_read = 0
         bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         count_read = 0
+
+        packet_amount = 0
         while (len(bytes_read) > 0):
             count_read += 1
             total_num_of_bytes_read += len(bytes_read)
             payload = bytes_read
             message = "[%s][%03d][%s][%04d][%s]" % (
-                MSG_STATUS_SUCCESS, client.optional_arg, MSG_TYPE_PLAY, len(payload), payload)
+                MSG_STATUS_SUCCESS, client.count_of_play, MSG_TYPE_PLAY, len(payload), payload)
             # client interrupt by [stop]
             if not client.alive:
                 print("client not alive")
@@ -135,6 +138,9 @@ def send_response_to_client(client):
 
             # print("client state = " + str(client.state))
             #print(len(message))
+            packet_amount += 1
+            print("[Client {0}] sends packet number {1}".format(
+                    client.session_id, packet_amount))
             client.conn.sendall(message)
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
@@ -153,8 +159,8 @@ def send_response_to_client(client):
     elif client.cmd in ["stop", "s"]:
         print("[Client {0}] Will send stop msg in write thread".format(
             client.session_id))
-        message = "[%s][%s][%s][%04d][%s]" % (
-            MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_STOP, len(payload), payload)
+        message = "[%s][%03d][%s][%04d][%s]" % (
+            MSG_STATUS_SUCCESS, client.count_of_play, MSG_TYPE_STOP, len(payload), payload)
         client.conn.sendall(message)
         print("stop " + message)
         client.lock.acquire()
@@ -193,6 +199,7 @@ def client_read(client):
         try:
             if cmd in ["play", "p"]:
                 client.optional_arg = int(args)
+                client.count_of_play = client.count_of_play + 1
                 # at this moment client is streaming [play] packets
                 if client.state == STATE_PLAY:
                     client.state = STATE_PLAY_ANOTHER
@@ -203,6 +210,7 @@ def client_read(client):
             elif cmd in ["stop", "s"]:
                 print("[Client {0}] Requests to stop in read thread".format(
                     client.session_id))
+                client.count_of_play = client.count_of_play + 1
                 client.state = STATE_STOP
             elif cmd in ["list", "l"]:
                 client.state = STATE_LIST
