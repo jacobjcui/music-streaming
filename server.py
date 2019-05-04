@@ -44,7 +44,7 @@ class Client:
         self.alive = True
         self.state = STATE_INIT
         self.count_of_play = 0
-        print("Client {0} Connects in".format(self.session_id))
+        print("[Client {0}] Connects in".format(self.session_id))
 
 
 # Thread that sends music and lists to the client.  All send() calls
@@ -78,12 +78,8 @@ def send_response_to_client(client):
         payload = songs
         message = "[%s][%s][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.session_id, MSG_TYPE_LIST, len(payload), payload)
-        client.conn.sendall(message)
-        client.lock.acquire()
-        try:
-            client.state = STATE_LIST_DONE
-        finally:
-            client.lock.release()
+        sendall_wrapper(client, message)
+        set_state_for_client(client, STATE_LIST_DONE)
     elif client.cmd in ["play", "p"]:
         print("[Client {0}] Will send play {1} msg in write thread".format(
             client.session_id, client.optional_arg))
@@ -91,25 +87,16 @@ def send_response_to_client(client):
         if client.optional_arg == -1:
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-            client.conn.sendall(message)
-            client.lock.acquire()
-            try:
-                client.state = STATE_PLAY_DONE
-            finally:
-                client.lock.release()
+            sendall_wrapper(client, message)
+            set_state_for_client(client, STATE_PLAY_DONE)
             return
         # song index is invalid
         song_index = client.optional_arg
         if song_index >= len(songlist):
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
-
-            client.conn.sendall(message)
-            client.lock.acquire()
-            try:
-                client.state = STATE_PLAY_DONE
-            finally:
-                client.lock.release()
+            sendall_wrapper(client, message)
+            set_state_for_client(client, STATE_PLAY_DONE)
             return
         # retrieve song content and send in a series of packets
         filename = songlist[song_index] + '.mp3'
@@ -137,45 +124,50 @@ def send_response_to_client(client):
                 print("[Client {0}] Requests to play another song: {1} in write thread".format(
                     client.session_id, client.optional_arg))
                 f.close()
-                client.lock.acquire()
-                try:
-                    client.state = STATE_PLAY
-                finally:
-                    client.lock.release()
+                set_state_for_client(client, STATE_PLAY)
                 return
-
-            client.conn.sendall(message)
+            message_sent_status = sendall_wrapper(client, message)
+            if message_sent_status < 0:
+                set_state_for_client(client, STATE_PLAY_DONE)
+                client.conn.close()
+                return
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         print("[Client {0}] Done sending all stream packets for Song {1}!".format(
             client.session_id, client.optional_arg))
         f.close()
-        client.lock.acquire()
-        try:
-            client.state = STATE_PLAY_DONE
-        finally:
-            client.lock.release()
+        set_state_for_client(client, STATE_PLAY_DONE)
     elif client.cmd in ["stop", "s"]:
         print("[Client {0}] Will send stop msg in write thread".format(
             client.session_id))
         message = "[%s][%03d][%s][%04d][%s]" % (
             MSG_STATUS_SUCCESS, client.count_of_play, MSG_TYPE_STOP, len(payload), payload)
-        client.conn.sendall(message)
-        client.lock.acquire()
-        try:
-            client.state = STATE_STOP_DONE
-        finally:
-            client.lock.release()
+        sendall_wrapper(client, message)
+        set_state_for_client(client, STATE_STOP_DONE)
     else:
         print("[Client {0}] Should not reach here [2]".format(
             client.session_id))
+
+
+# send message while catching IO error for client closes connection
+def sendall_wrapper(client, message):
+    try:
+        client.conn.sendall(message)
+        return 1
+    except IOError:
+        print("[Client {0}] Failed to send packets due to connection closed".format(
+            client.session_id))
+        return -1
 
 
 # Thread that receives commands from the client.  All recv() calls should
 # be contained in this function.
 def client_read(client):
     while True:
-        line = client.conn.recv(RECV_BUFFER_SIZE)
+        try:
+            line = client.conn.recv(RECV_BUFFER_SIZE)
+        except IOError:
+            return
         print("[Client {0}] Requests [{1}]".format(client.session_id, line))
         if not line or line.decode('utf-8') == 'quit':
             client.lock.acquire()
@@ -218,13 +210,21 @@ def client_read(client):
             client.cmd = cmd
         finally:
             client.lock.release()
-    print("Client {0} disconnects".format(client.session_id))
+    print("[Client {0}] Disconnects".format(client.session_id))
 
 
 def is_valid_command(cmd):
     if cmd in ["list", "l", "play", "p", "stop", "s"]:
         return True
     return False
+
+
+def set_state_for_client(client, state):
+    client.lock.acquire()
+    try:
+        client.state = state
+    finally:
+        client.lock.release()
 
 
 def get_mp3s(musicdir):
