@@ -56,8 +56,7 @@ def client_write(client):
     while True:
         # close connection is the client disconnects
         if client.alive == False:
-            print("[Client {0}] Closes connection".format(
-                client.session_id))
+            print("[Client {0}] Closes connection".format(client.session_id))
             break
         # busy loop when the client first connects in with no cmd
         if client.state == STATE_INIT:
@@ -65,9 +64,9 @@ def client_write(client):
         elif client.state == STATE_PLAY_DONE or client.state == STATE_STOP_DONE or client.state == STATE_LIST_DONE:
             continue
         else:
-            send_response_to_client(client)
-            if client.state == STATE_PLAY_DONE or client.state == STATE_STOP_DONE or client.state == STATE_LIST_DONE:
-                continue
+            send_status = send_response_to_client(client)
+            if send_status < 0:
+                break
     client.conn.close()
 
 
@@ -84,12 +83,12 @@ def send_response_to_client(client):
         print("[Client {0}] Will send play {1} msg in write thread".format(
             client.session_id, client.optional_arg))
         # song index does not exist
-        if client.optional_arg == -1:
+        if client.optional_arg < 0:
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             sendall_wrapper(client, message)
             set_state_for_client(client, STATE_PLAY_DONE)
-            return
+            return 1
         # song index is invalid
         song_index = client.optional_arg
         if song_index >= len(songlist):
@@ -97,7 +96,7 @@ def send_response_to_client(client):
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             sendall_wrapper(client, message)
             set_state_for_client(client, STATE_PLAY_DONE)
-            return
+            return 1
         # retrieve song content and send in a series of packets
         filename = songlist[song_index] + '.mp3'
         f = open(music_dir + '/' + filename, 'rb')
@@ -119,18 +118,17 @@ def send_response_to_client(client):
                 print("[Client {0}] Stops streaming due to [stop] command in write thread".format(
                     client.session_id))
                 f.close()
-                return
+                return 1
             if client.state == STATE_PLAY_ANOTHER:
                 print("[Client {0}] Requests to play another song: {1} in write thread".format(
                     client.session_id, client.optional_arg))
                 f.close()
                 set_state_for_client(client, STATE_PLAY)
-                return
+                return 1
             message_sent_status = sendall_wrapper(client, message)
             if message_sent_status < 0:
                 set_state_for_client(client, STATE_PLAY_DONE)
-                client.conn.close()
-                return
+                return -1
             f.seek(total_num_of_bytes_read)
             bytes_read = f.read(PAYLOAD_BUFFER_SIZE)
         print("[Client {0}] Done sending all stream packets for Song {1}!".format(
@@ -147,6 +145,7 @@ def send_response_to_client(client):
     else:
         print("[Client {0}] Should not reach here [2]".format(
             client.session_id))
+    return 1
 
 
 # send message while catching IO error for client closes connection
@@ -167,7 +166,12 @@ def client_read(client):
         try:
             line = client.conn.recv(RECV_BUFFER_SIZE)
         except IOError:
-            return
+            client.lock.acquire()
+            try:
+                client.alive = False
+            finally:
+                client.lock.release()
+            break
         print("[Client {0}] Requests [{1}]".format(client.session_id, line))
         if not line or line.decode('utf-8') == 'quit':
             client.lock.acquire()
@@ -210,7 +214,7 @@ def client_read(client):
             client.cmd = cmd
         finally:
             client.lock.release()
-    print("[Client {0}] Disconnects".format(client.session_id))
+    # print("[Client {0}] Disconnects".format(client.session_id))
 
 
 def is_valid_command(cmd):
