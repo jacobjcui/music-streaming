@@ -14,7 +14,7 @@ import random
 
 
 total_num_of_data = 0
-RECV_BUFFER_SIZE = 4096
+RECV_BUFFER_SIZE = 4021
 
 QUEUE_LENGTH = 10
 SEND_BUFFER = 4096
@@ -34,7 +34,7 @@ song_playing_index = -1
 
 stop_lock = Lock()
 count_of_play_lock = Lock()
-count_recv = 0
+
 
 # count of play commands to filter incoming packets
 # increment when command is [play] or [stop]
@@ -43,25 +43,18 @@ count_of_packet_for_curr_count_of_play = 0
 
 
 def clear_play_buffer(cond_filled, wrap):
-    then = time.time()
-    # print("in main " + str(stop_flag))
     cond_filled.acquire()
     wrap.data = ''
     wrap.mf = mad.MadFile(wrap)
     cond_filled.notify()
     cond_filled.release()
-    now = time.time()
-    print("It took: ", now-then, " seconds to clear the buffer\n")
 
 
 def msg_parser(data):
     count = 0
     status = data[1:4]
-    # print(status)
     session_id = data[6:9]
-    # print(session_id)
     msg_type = data[11:12]
-    # print(msg_type)
     length_of_payload_str = data[14:18]
     num_start = 0
     for ch in length_of_payload_str:
@@ -72,7 +65,6 @@ def msg_parser(data):
     if num_start == len(length_of_payload_str):
         num_start -= 1
     length_of_payload = int(length_of_payload_str[num_start:])
-    # print(length_of_payload)
     content = data[20:len(data)-1]
     return status, session_id, length_of_payload, msg_type, content
 
@@ -108,8 +100,8 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         # TODO::What if the content itself has brackets? maybe force to count till last
         # bracket?
 
-        data = sock.recv(4021)
-        # print(len(data))
+       
+        data = sock.recv(RECV_BUFFER_SIZE)
 
         length_of_payload_str = ''
         if data[0:5] == '[200]':
@@ -123,7 +115,6 @@ def song_recv_thread_func(wrap, cond_filled, sock):
             if num_start == len(length_of_payload_str):
                 num_start -= 1
         else:
-            # print(data[0:5])
             continue
         length_of_payload = 0
         if length_of_payload_str != '':
@@ -132,34 +123,25 @@ def song_recv_thread_func(wrap, cond_filled, sock):
         while len(data) < length_of_payload:
             data += sock.recv(1)
 
-        global count_recv
-        count_recv += 1
-
-        # print(data)
+       
         status, number_of_songs_played, length_of_payload, msg_type, content = msg_parser(
             data)
         number_of_songs_played_int = int(number_of_songs_played)
 
-        # if msg_type != MSG_TYPE_STOP and song_id_int != song_playing_index:
-        #     continue
         if number_of_songs_played_int != count_of_play:
             continue
 
         if stop_flag:
             continue
 
-        #print("Received Packet {0} for count of play {1}".format(count_of_packet_for_curr_count_of_play, count_of_play))
+       
 
         if msg_type == MSG_TYPE_PLAY:
             cond_filled.acquire()
-            # if not stop_flag:
             if wrap.data == None:
                 wrap.data = content
             else:
                 wrap.data += content
-            # else:
-            #     wrap.data = ''
-            #     wrap.mf = mad.MadFile(wrap)
             cond_filled.notify()
             cond_filled.release()
         elif msg_type == MSG_TYPE_STOP:
@@ -176,27 +158,36 @@ def song_play_thread_func(wrap, cond_filled, dev):
     while True:
         if (len(wrap.data) == 0):
             continue
-
+        
+        cond_filled.acquire()
         wrap.mf = mad.MadFile(wrap)
+        cond_filled.release()
         while True:
+            cond_filled.acquire()
             buf = wrap.mf.read()
+            cond_filled.release()
             if stop_flag:
                 buf = None
             if buf is None:
                 break
             dev.play(buffer(buf), len(buf))
-
+        
 
 def list_thread_func(sock):
     while True:
-        data = sock.recv(4021)
+        
+        data = sock.recv(RECV_BUFFER_SIZE)
+        
         status, session_id, length_of_payload, msg_type, content = msg_parser(
             data)
         while length_of_payload > len(data):
-            data += sock.recv(4021)
+            data += sock.recv(RECV_BUFFER_SIZE)
 
         if msg_type == MSG_TYPE_LIST:
-            print(content)
+            sys.stdout.write(content)
+            sys.stdout.flush()
+            
+            
         else:
             print("Wrong response for the [list] request.")
 
@@ -205,7 +196,6 @@ def main():
     if len(sys.argv) < 3:
         print 'Usage: %s <server name/ip> <server port>' % sys.argv[0]
         sys.exit(1)
-    count_recv = 0
     # Create a pseudo-file wrapper, condition variable, and socket.  These will
     # be passed to the thread we're about to create.
     wrap = mywrapper()
@@ -254,12 +244,14 @@ def main():
     count_of_play = 0
     global count_of_packet_for_curr_count_of_play
     count_of_packet_for_curr_count_of_play = 0
-
+   
     # Enter our never-ending user I/O loop.  Because we imported the readline
     # module above, raw_input gives us nice shell-like behavior (up-arrow to
     # go backwards, etc.).
     while True:
+       
         line = raw_input('>> ')
+        
 
         if ' ' in line:
             cmd, args = line.split(' ', 1)
@@ -280,36 +272,25 @@ def main():
         if cmd in ['p', 'play']:
             cmd = 'play'
             line = 'play' + ' ' + args
-            # stop_lock.acquire()
             stop_flag = False
-            # stop_lock.release()
             clear_play_buffer(cond_filled, wrap)
             sock_play.sendall(line)
             global song_playing_index
 
             song_playing_index = int(args)
-            # clear song buffer
-            # count_of_play_lock.acquire()
             count_of_play += 1
             count_of_packet_for_curr_count_of_play = 0
-            # count_of_play_lock.release()
 
         if cmd in ['s', 'stop']:
             cmd = 'stop'
             line = 'stop'
-            # stop_lock.acquire()
 
             stop_flag = True
-            # stop_lock.release()
-            # print("in main " + str(stop_flag))
             clear_play_buffer(cond_filled, wrap)
 
             sock_play.sendall(line)
-            # clear song buffer
-            # count_of_play_lock.acquire()
             count_of_play += 1
             count_of_packet_for_curr_count_of_play = 0
-            # count_of_play_lock.release()
         if cmd in ['quit', 'q', 'exit']:
             print("Bye bye!")
             sys.exit(0)

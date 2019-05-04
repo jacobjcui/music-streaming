@@ -92,6 +92,11 @@ def send_response_to_client(client):
             message = "[%s][%s][%s][%04d][%s]" % (
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
             client.conn.sendall(message)
+            client.lock.acquire()
+            try:
+                client.state = STATE_PLAY_DONE
+            finally:
+                client.lock.release()
             return
         # song index is invalid
         song_index = client.optional_arg
@@ -100,6 +105,11 @@ def send_response_to_client(client):
                 MSG_STATUS_FAILURE, client.session_id, MSG_TYPE_PLAY, len(payload), payload)
 
             client.conn.sendall(message)
+            client.lock.acquire()
+            try:
+                client.state = STATE_PLAY_DONE
+            finally:
+                client.lock.release()
             return
         # retrieve song content and send in a series of packets
         filename = songlist[song_index] + '.mp3'
@@ -232,7 +242,8 @@ def get_mp3s(musicdir):
         # store song name and index in "songlist"
         songs_temp.append("{0}. {1}\n".format(len(songlist), filename[:-4]))
         songlist.append("{0}".format(filename[:-4]))
-    # songs_temp.append(">> ")
+    songs_temp.append(">> ")
+
     songs = "".join(songs_temp)
     # songs = songs[:-1]
     print("Found {0} song(s)!".format(len(songlist)))
