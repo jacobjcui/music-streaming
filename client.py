@@ -35,6 +35,7 @@ song_playing_index = -1
 stop_lock = Lock()
 count_of_play_lock = Lock()
 
+
 # count of play commands to filter incoming packets
 # increment when command is [play] or [stop]
 count_of_play = 0
@@ -170,7 +171,7 @@ def song_play_thread_func(wrap, cond_filled, dev):
             if buf is None:
                 break
             dev.play(buffer(buf), len(buf))
-
+        
 
 def list_thread_func(sock):
     while True:
@@ -183,7 +184,10 @@ def list_thread_func(sock):
             data += sock.recv(RECV_BUFFER_SIZE)
 
         if msg_type == MSG_TYPE_LIST:
-            print(content)
+            sys.stdout.write(content)
+            sys.stdout.flush()
+            
+            
         else:
             print("Wrong response for the [list] request.")
 
@@ -240,12 +244,14 @@ def main():
     count_of_play = 0
     global count_of_packet_for_curr_count_of_play
     count_of_packet_for_curr_count_of_play = 0
-
+   
     # Enter our never-ending user I/O loop.  Because we imported the readline
     # module above, raw_input gives us nice shell-like behavior (up-arrow to
     # go backwards, etc.).
     while True:
+       
         line = raw_input('>> ')
+        
 
         if ' ' in line:
             cmd, args = line.split(' ', 1)

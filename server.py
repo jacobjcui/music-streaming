@@ -232,7 +232,8 @@ def get_mp3s(musicdir):
         # store song name and index in "songlist"
         songs_temp.append("{0}. {1}\n".format(len(songlist), filename[:-4]))
         songlist.append("{0}".format(filename[:-4]))
-    # songs_temp.append(">> ")
+    songs_temp.append(">> ")
+    
     songs = "".join(songs_temp)
     # songs = songs[:-1]
     print("Found {0} song(s)!".format(len(songlist)))
